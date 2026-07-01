@@ -15,12 +15,14 @@ from .errors import AbsolutePayError
 from .resources import (
     Balances,
     Conversions,
+    Deposits,
     Fees,
     GiftCards,
     Invoices,
     OffRamp,
     Payments,
     Payouts,
+    Reconciliation,
     Refunds,
     Subscriptions,
     Transactions,
@@ -37,8 +39,8 @@ class AbsolutePay:
 
     Each API area hangs off the instance as an attribute: `balances`, `fees`, `payments`,
     `payouts`, `refunds`, `conversions`, `invoices`, `subscriptions`, `giftcards`, `offramp`,
-    and `transactions`. Every call returns parsed JSON and raises `AbsolutePayError` on a
-    non-2xx response.
+    `transactions`, `reconciliation`, and `deposits`. Every call returns parsed JSON and raises
+    `AbsolutePayError` on a non-2xx response.
 
     This is a **server-side** client: the API key and signing secret authenticate as your
     workspace and must never reach a browser or mobile app. When `signing_secret` is set,
@@ -114,6 +116,8 @@ class AbsolutePay:
         self.giftcards = GiftCards(self)
         self.offramp = OffRamp(self)
         self.transactions = Transactions(self)
+        self.reconciliation = Reconciliation(self)
+        self.deposits = Deposits(self)
 
     def request(
         self,

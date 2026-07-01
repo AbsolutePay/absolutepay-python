@@ -460,6 +460,23 @@ class _PublicInvoices(_Resource):
         """
         return self._c.request("GET", f"/v1/public/invoices/{path_seg(token)}/status")
 
+    def track_open(self, token: str) -> Json:
+        """Record that the payer opened the hosted invoice page (analytics beacon).
+
+        A fire-and-forget signal used only for open-rate analytics; it does not change the
+        invoice state and needs no authentication.
+
+        Args:
+            token: The invoice's public token.
+
+        Returns:
+            A dict acknowledging the recorded open (typically empty).
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request("POST", f"/v1/public/invoices/{path_seg(token)}/open")
+
 
 class Invoices(_Resource):
     """Invoices and hosted payment links (scope: `invoices:write`; reads use `invoices:read`).
@@ -916,6 +933,185 @@ class OffRamp(_Resource):
             AbsolutePayError: on a non-2xx response.
         """
         return self._c.request("GET", "/v1/offramp/orders" + qs({"limit": limit, "before": before, "status": status}))
+
+    def register_bank(
+        self,
+        *,
+        bank_account_name: str,
+        bank_name: str,
+        country_id: str,
+        iban: str,
+        file: dict,
+        swift: Optional[str] = None,
+        address: Optional[str] = None,
+        remittance_line_number: Optional[str] = None,
+    ) -> Json:
+        """Register a destination bank account for the off-ramp (starts a review flow).
+
+        The bank account is not immediately usable — it enters a manual review before it can
+        receive fiat. Additional verification materials may need to be uploaded afterwards via
+        `submit_bank_materials`.
+
+        Args:
+            bank_account_name: The account holder's name on the bank account.
+            bank_name: The receiving bank's name.
+            country_id: The off-ramp country id (from `countries`).
+            iban: The destination account IBAN (or local account number).
+            file: The primary supporting document as a dict with keys `filename`,
+                `contentType`, and `dataBase64` (the file's bytes, base64-encoded).
+            swift: The bank's SWIFT/BIC code. Optional.
+            address: The account holder's address. Optional.
+            remittance_line_number: An extra remittance/routing reference line. Optional.
+
+        Returns:
+            A dict describing the registered bank account (its `bankAccountId` and review
+            status).
+
+        Raises:
+            AbsolutePayError: on a non-2xx response (e.g. 403 missing `payouts:write`).
+        """
+        body = clean(
+            {
+                "bankAccountName": bank_account_name,
+                "bankName": bank_name,
+                "countryId": country_id,
+                "iban": iban,
+                "file": file,
+                "swift": swift,
+                "address": address,
+                "remittanceLineNumber": remittance_line_number,
+            }
+        )
+        return self._c.request("POST", "/v1/offramp/banks", body)
+
+    def delete_bank(self, bank_account_id: str) -> Json:
+        """Remove a registered destination bank account.
+
+        Args:
+            bank_account_id: The bank account id to delete (from `banks`).
+
+        Returns:
+            A dict acknowledging the deletion (typically empty).
+
+        Raises:
+            AbsolutePayError: on a non-2xx response (e.g. 404 if unknown).
+        """
+        return self._c.request("DELETE", f"/v1/offramp/banks/{path_seg(bank_account_id)}")
+
+    def submit_bank_materials(self, bank_account_id: str, *, certificate: Sequence[dict], passport: Sequence[dict]) -> Json:
+        """Upload the verification materials required to approve a registered bank account.
+
+        Args:
+            bank_account_id: The bank account id the materials are for (from `banks`).
+            certificate: The certificate document(s) — a sequence of `DocFile` dicts, each with
+                keys `filename`, `contentType`, and `dataBase64` (base64-encoded bytes).
+            passport: The passport/ID document(s) — a sequence of `DocFile` dicts with the same
+                shape as `certificate`.
+
+        Returns:
+            A dict acknowledging the submitted materials and the updated review status.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        body = {"certificate": list(certificate), "passport": list(passport)}
+        return self._c.request("POST", f"/v1/offramp/banks/{path_seg(bank_account_id)}/materials", body)
+
+
+class Reconciliation(_Resource):
+    """Settled pay-in / withdrawal ledgers for reconciliation (scope: `ledger:read`)."""
+
+    def payments(
+        self,
+        *,
+        from_: Optional[int] = None,
+        to: Optional[int] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Json:
+        """List the settled pay-in ledger for reconciliation.
+
+        Note: `from_` has a trailing underscore because `from` is a Python keyword; it maps to
+        the `from` query parameter.
+
+        Args:
+            from_: Start of the time window, epoch MILLISECONDS (inclusive). Optional.
+            to: End of the time window, epoch MILLISECONDS. Optional.
+            limit: Max entries to return. Optional.
+            offset: Number of entries to skip (for paging). Optional.
+
+        Returns:
+            A dict/list of settled pay-in ledger entries for the window.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request(
+            "GET",
+            "/v1/reconciliation/payments" + qs({"from": from_, "to": to, "limit": limit, "offset": offset}),
+        )
+
+    def withdrawals(
+        self,
+        *,
+        from_: Optional[int] = None,
+        to: Optional[int] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> Json:
+        """List the settled withdrawal ledger for reconciliation.
+
+        Note: `from_` has a trailing underscore because `from` is a Python keyword; it maps to
+        the `from` query parameter.
+
+        Args:
+            from_: Start of the time window, epoch MILLISECONDS (inclusive). Optional.
+            to: End of the time window, epoch MILLISECONDS. Optional.
+            limit: Max entries to return. Optional.
+            offset: Number of entries to skip (for paging). Optional.
+
+        Returns:
+            A dict/list of settled withdrawal ledger entries for the window.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request(
+            "GET",
+            "/v1/reconciliation/withdrawals" + qs({"from": from_, "to": to, "limit": limit, "offset": offset}),
+        )
+
+
+class Deposits(_Resource):
+    """Direct on-chain deposits into the workspace balance (scope: `balances:read`)."""
+
+    def chains(self) -> Json:
+        """List the chains/networks a deposit address can be created on.
+
+        Returns:
+            A list of supported chains (with per-chain currency/network details).
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request("GET", "/v1/deposits/chains")
+
+    def create_address(self, *, chain: str) -> Json:
+        """Create (or fetch) the permanent deposit address for a network.
+
+        The address is permanent and reusable — any funds sent to it credit the workspace
+        balance.
+
+        Args:
+            chain: The chain/network to deposit on, e.g. `"TRX"` (from `chains`).
+
+        Returns:
+            A dict with the deposit `address` (and chain/memo where applicable).
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request("POST", "/v1/deposits/address", {"chain": chain})
 
 
 class Transactions(_Resource):

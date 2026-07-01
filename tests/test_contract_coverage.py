@@ -59,19 +59,19 @@ OP_MAP = {
     "listGiftCards": "giftcards.list",
     "getGiftCard": "giftcards.get",
     "listTransactions": "transactions.list",
+    "listReconciliationPayments": "reconciliation.payments",
+    "listReconciliationWithdrawals": "reconciliation.withdrawals",
+    "listDepositChains": "deposits.chains",
+    "createDepositAddress": "deposits.create_address",
+    "registerOffRampBank": "offramp.register_bank",
+    "deleteOffRampBank": "offramp.delete_bank",
+    "submitOffRampBankMaterials": "offramp.submit_bank_materials",
+    "trackInvoiceOpen": "invoices.public.track_open",
 }
 
-# Operations deliberately NOT wrapped in this first cut (documented gaps, not drift).
-UNWRAPPED = {
-    "trackInvoiceOpen",          # analytics beacon; payer page only
-    "registerOffRampBank",       # bank onboarding (docs + review flow)
-    "deleteOffRampBank",
-    "submitOffRampBankMaterials",
-    "listReconciliationPayments",
-    "listReconciliationWithdrawals",
-    "listDepositChains",
-    "createDepositAddress",
-}
+# Operations deliberately NOT wrapped (documented gaps, not drift). The SDK now covers the
+# entire customer contract, so this set is empty.
+UNWRAPPED: set[str] = set()
 
 
 def _spec_operation_ids() -> set[str]:
