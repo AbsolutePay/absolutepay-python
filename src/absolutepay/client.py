@@ -33,16 +33,51 @@ SANDBOX_BASE = "https://sandbox-api.absolutepay.io"
 
 
 class AbsolutePay:
-    """AbsolutePay API client.
+    """AbsolutePay API client — compose once, then reach the REST surface via resource groups.
+
+    Each API area hangs off the instance as an attribute: `balances`, `fees`, `payments`,
+    `payouts`, `refunds`, `conversions`, `invoices`, `subscriptions`, `giftcards`, `offramp`,
+    and `transactions`. Every call returns parsed JSON and raises `AbsolutePayError` on a
+    non-2xx response.
+
+    This is a **server-side** client: the API key and signing secret authenticate as your
+    workspace and must never reach a browser or mobile app. When `signing_secret` is set,
+    every request is HMAC-signed automatically (see `absolutepay.signing`).
 
     Args:
-        api_key: App API key (Bearer). Server-side only — never ship it to a browser.
-        signing_secret: Request signing secret (``apisign_...``). Required for app keys;
-            when set, every request is HMAC-signed automatically.
-        sandbox: Target the public sandbox (``https://sandbox-api.absolutepay.io``) instead
-            of production. Ignored when ``base_url`` is set.
-        base_url: Override the API origin entirely. Takes precedence over ``sandbox``.
-        timeout: Per-request timeout in seconds (default 30).
+        api_key: App API key sent as an HTTP Bearer token. Required; a `ValueError` is
+            raised if empty. Server-side only.
+        signing_secret: Per-request signing secret (`apisign_...`). Required for app/tenant
+            keys; when provided, each request is signed with HMAC-SHA512 and the signature
+            headers are attached automatically. Omit only for key types that don't require
+            request signing.
+        sandbox: When `True`, target the public sandbox origin
+            (`https://sandbox-api.absolutepay.io`) instead of production. Ignored when
+            `base_url` is given. Defaults to `False` (production).
+        base_url: Override the API origin entirely (e.g. a local dev server). Takes
+            precedence over `sandbox`. Must use `https`, except `localhost`/`127.0.0.1`
+            which may use `http`; anything else raises `ValueError`.
+        timeout: Per-request socket timeout in seconds. Defaults to `30.0`.
+
+    Raises:
+        ValueError: if `api_key` is empty, or `base_url` is non-https on a non-local host.
+
+    Example:
+        ```python
+        from absolutepay import AbsolutePay
+
+        client = AbsolutePay(
+            api_key="ap_live_...",
+            signing_secret="apisign_...",
+        )
+        balances = client.balances.list()
+        checkout = client.payments.create_checkout(
+            amount={"amount": "10.00", "currency": "USDT"},
+            chain="TRX",
+            merchant_user_id=1001,
+            goods_name="Pro plan",
+        )
+        ```
     """
 
     def __init__(
@@ -87,9 +122,31 @@ class AbsolutePay:
         body: Any = None,
         extra_headers: Optional[Mapping[str, str]] = None,
     ) -> Any:
-        """Low-level request. ``path`` is the path+query. Raises :class:`AbsolutePayError` on non-2xx.
+        """Send one signed HTTP request and return the parsed JSON body.
 
-        Most callers use the resource methods (``client.balances.list()`` etc.) rather than this.
+        This is the low-level transport shared by every resource method. Most callers use the
+        resource helpers (`client.balances.list()`, `client.payments.create_checkout(...)`,
+        etc.) instead of calling this directly. The `authorization: Bearer` header and, when a
+        `signing_secret` is configured, the HMAC signature headers are attached here. Extra
+        headers (e.g. `Idempotency-Key`) are merged *after* signing so they stay outside the
+        signed canonical string.
+
+        Args:
+            method: HTTP verb (`"GET"`, `"POST"`, ...); case-insensitive.
+            path: Request path including any query string, e.g. `"/v1/balances"` or
+                `"/v1/checkout/abc?foo=bar"`. Must match exactly what gets signed.
+            body: JSON-serializable request body, or `None` for no body. When present, it is
+                compact-serialized and a `content-type: application/json` header is added.
+            extra_headers: Optional additional headers merged after signing (not covered by
+                the signature).
+
+        Returns:
+            The parsed JSON response (`dict`/`list`), or `None` for an empty response body.
+
+        Raises:
+            AbsolutePayError: on any non-2xx response (carrying `status`, `code`, `detail`,
+                `request_id`), or on a network/connection failure (`status == 0`,
+                `code == "network_error"`).
         """
         body_str = json.dumps(body, separators=(",", ":")) if body is not None else ""
         headers: dict[str, str] = {"authorization": f"Bearer {self._api_key}"}

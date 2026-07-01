@@ -9,3 +9,6 @@ dist/
 .venv/
 venv/
 .coverage
+.gstack/
+site/
+pdoc-site/
