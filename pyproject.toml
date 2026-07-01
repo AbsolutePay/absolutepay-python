@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "absolutepay"
+version = "0.1.0"
+description = "Official AbsolutePay API client for Python — payments, payouts, invoices, conversions, off-ramp, gift cards, and signed webhooks."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "AbsolutePay" }]
+keywords = ["absolutepay", "payments", "crypto", "payouts", "webhooks", "api", "sdk"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+dependencies = []  # zero runtime dependencies — standard library only
+
+[project.urls]
+Homepage = "https://docs.absolutepay.io"
+Repository = "https://github.com/AbsolutePay/absolutepay-python"
+Issues = "https://github.com/AbsolutePay/absolutepay-python/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/absolutepay"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

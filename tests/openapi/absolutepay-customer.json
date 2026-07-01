@@ -1,0 +1,3807 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AbsolutePay API",
+    "version": "0.1.0",
+    "license": {
+      "name": "Proprietary",
+      "identifier": "LicenseRef-Proprietary"
+    },
+    "description": "The AbsolutePay REST API — accept crypto payments, send payouts, run subscriptions, and reconcile, straight from your app. Every request is authenticated with your API key plus an HMAC signature; see the Authentication guide."
+  },
+  "servers": [
+    {
+      "url": "https://api.absolutepay.io"
+    }
+  ],
+  "security": [
+    {
+      "apiKey": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "apiKey": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Bearer ap_live_... or ap_test_..."
+      }
+    },
+    "schemas": {
+      "Money": {
+        "type": "object",
+        "required": [
+          "amount",
+          "currency"
+        ],
+        "properties": {
+          "amount": {
+            "type": "string",
+            "example": "10.500000",
+            "description": "decimal string, ≤6dp"
+          },
+          "currency": {
+            "type": "string",
+            "example": "USDT"
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "required": [
+          "code",
+          "title"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "Balance": {
+        "type": "object",
+        "required": [
+          "currency",
+          "available",
+          "locked"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "example": "USDT"
+          },
+          "available": {
+            "type": "string",
+            "example": "10.500000"
+          },
+          "locked": {
+            "type": "string",
+            "example": "0"
+          }
+        }
+      },
+      "BalanceLine": {
+        "type": "object",
+        "required": [
+          "currency",
+          "available",
+          "value",
+          "rate",
+          "priced"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "example": "ETH"
+          },
+          "available": {
+            "type": "string",
+            "example": "1.250000"
+          },
+          "value": {
+            "type": "string",
+            "description": "available converted to the quote currency",
+            "example": "4012.50"
+          },
+          "rate": {
+            "type": "string",
+            "description": "quote units per 1 currency",
+            "example": "3210.00"
+          },
+          "priced": {
+            "type": "boolean",
+            "description": "false when no convert quote was available"
+          }
+        }
+      },
+      "BalanceSummary": {
+        "type": "object",
+        "required": [
+          "quote",
+          "total",
+          "lines"
+        ],
+        "properties": {
+          "quote": {
+            "type": "string",
+            "example": "USDT"
+          },
+          "total": {
+            "type": "string",
+            "description": "sum of priced line values, in the quote currency",
+            "example": "5012.50"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BalanceLine"
+            }
+          }
+        }
+      },
+      "CheckoutRequest": {
+        "type": "object",
+        "required": [
+          "amount",
+          "chain",
+          "merchantUserId",
+          "goodsName"
+        ],
+        "properties": {
+          "merchantTradeNo": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "auto-generated if omitted"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "chain": {
+            "type": "string",
+            "example": "TRX",
+            "description": "settlement chain (see supported chains)"
+          },
+          "merchantUserId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "end-customer id on your platform"
+          },
+          "goodsName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "terminalType": {
+            "type": "string",
+            "enum": [
+              "WEB",
+              "APP",
+              "WAP",
+              "MINIAPP",
+              "OTHERS"
+            ]
+          },
+          "expiresIn": {
+            "type": "integer",
+            "description": "seconds; clamped to a max of 1h"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "redirect",
+              "web",
+              "qr"
+            ],
+            "description": "pay-in UX (default redirect)"
+          }
+        }
+      },
+      "CheckoutOrder": {
+        "type": "object",
+        "required": [
+          "prepayId",
+          "merchantTradeNo",
+          "status"
+        ],
+        "properties": {
+          "prepayId": {
+            "type": "string"
+          },
+          "merchantTradeNo": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "example": "PENDING"
+          },
+          "amount": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              }
+            ],
+            "description": "gross order amount (from order/query)"
+          },
+          "paymentUrl": {
+            "type": "string"
+          },
+          "qrContent": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string",
+            "description": "per-order on-chain receiving address"
+          },
+          "expireTime": {
+            "type": "integer",
+            "format": "int64",
+            "description": "UTC ms"
+          }
+        }
+      },
+      "WithdrawOption": {
+        "type": "object",
+        "required": [
+          "currency",
+          "chain"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string",
+            "example": "MATIC"
+          },
+          "label": {
+            "type": "string",
+            "description": "human network name, e.g. Ethereum(ERC20)"
+          },
+          "withdrawFee": {
+            "type": "string"
+          },
+          "minWithdraw": {
+            "type": "string"
+          },
+          "maxWithdraw": {
+            "type": "string"
+          },
+          "minConfirm": {
+            "type": "integer"
+          }
+        }
+      },
+      "DepositChain": {
+        "type": "object",
+        "required": [
+          "chain",
+          "label",
+          "currencies"
+        ],
+        "properties": {
+          "chain": {
+            "type": "string",
+            "example": "ETH"
+          },
+          "label": {
+            "type": "string",
+            "example": "Ethereum(ERC20)"
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "coins this network can receive",
+            "example": [
+              "ETH",
+              "USDT",
+              "USDC"
+            ]
+          }
+        }
+      },
+      "DepositAddressRequest": {
+        "type": "object",
+        "required": [
+          "chain"
+        ],
+        "properties": {
+          "chain": {
+            "type": "string",
+            "example": "ETH",
+            "description": "network code from GET /v1/deposits/chains"
+          }
+        }
+      },
+      "DepositAddress": {
+        "type": "object",
+        "required": [
+          "chain",
+          "address",
+          "currencies"
+        ],
+        "properties": {
+          "chain": {
+            "type": "string",
+            "example": "ETH"
+          },
+          "address": {
+            "type": "string",
+            "description": "permanent, reusable receive address for this network"
+          },
+          "memo": {
+            "type": "string",
+            "description": "destination tag/memo — required on memo networks; sending without it can lose funds"
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "coins this address accepts on its network",
+            "example": [
+              "ETH",
+              "USDT",
+              "USDC"
+            ]
+          }
+        }
+      },
+      "PayOrderRecord": {
+        "type": "object",
+        "required": [
+          "merchantTradeNo",
+          "status",
+          "amount",
+          "currency"
+        ],
+        "properties": {
+          "merchantTradeNo": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "example": "PAID"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "paidAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "UTC ms"
+          }
+        }
+      },
+      "WithdrawSuborderRecord": {
+        "type": "object",
+        "required": [
+          "merchantBatchNo",
+          "suborderId",
+          "chain",
+          "amount",
+          "status"
+        ],
+        "properties": {
+          "merchantBatchNo": {
+            "type": "string"
+          },
+          "suborderId": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "txId": {
+            "type": "string"
+          }
+        }
+      },
+      "FeePreview": {
+        "type": "object",
+        "required": [
+          "amount",
+          "currency",
+          "paymentType",
+          "fee",
+          "net",
+          "markup",
+          "networkFee"
+        ],
+        "properties": {
+          "amount": {
+            "type": "string",
+            "example": "1000.000000"
+          },
+          "currency": {
+            "type": "string",
+            "example": "USDT"
+          },
+          "paymentType": {
+            "type": "string",
+            "example": "CHECKOUT"
+          },
+          "fee": {
+            "type": "string",
+            "description": "total fee on this amount",
+            "example": "2.500000"
+          },
+          "net": {
+            "type": "string",
+            "description": "amount - fee",
+            "example": "997.500000"
+          },
+          "markup": {
+            "type": "string",
+            "description": "your account-tier fee portion",
+            "example": "2.000000"
+          },
+          "networkFee": {
+            "type": "string",
+            "description": "network/processing fee portion",
+            "example": "0.500000"
+          }
+        }
+      },
+      "RefundRequest": {
+        "type": "object",
+        "required": [
+          "merchantTradeNo",
+          "amount"
+        ],
+        "properties": {
+          "merchantTradeNo": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "the original order's trade no"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "refundRequestId": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "idempotency key; auto-generated if omitted"
+          }
+        }
+      },
+      "RefundOrder": {
+        "type": "object",
+        "required": [
+          "merchantTradeNo",
+          "refundRequestId",
+          "status",
+          "amount",
+          "currency"
+        ],
+        "properties": {
+          "merchantTradeNo": {
+            "type": "string"
+          },
+          "refundRequestId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "example": "PENDING",
+            "description": "PENDING until the charge.refunded webhook (REFUND_SUCCESS/REFUND_REJECTED)"
+          },
+          "amount": {
+            "type": "string",
+            "example": "10.000000"
+          },
+          "currency": {
+            "type": "string",
+            "example": "USDT"
+          }
+        }
+      },
+      "PayoutItemRequest": {
+        "type": "object",
+        "required": [
+          "recipientAddress",
+          "chain",
+          "amount"
+        ],
+        "properties": {
+          "recipientAddress": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 100
+          }
+        }
+      },
+      "PayoutRequest": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/PayoutItemRequest"
+            }
+          }
+        }
+      },
+      "PayoutStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "SUBMITTED",
+          "PROCESSING",
+          "SUCCESS",
+          "PARTIAL",
+          "FAILED"
+        ]
+      },
+      "PayoutSubOrder": {
+        "type": "object",
+        "required": [
+          "recipientAddress",
+          "chain",
+          "amount",
+          "status"
+        ],
+        "properties": {
+          "recipientAddress": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PayoutStatus"
+          },
+          "txid": {
+            "type": "string"
+          },
+          "deliveredAmount": {
+            "type": "string",
+            "description": "the amount actually delivered — matters for a PARTIAL settlement"
+          },
+          "fee": {
+            "type": "string",
+            "description": "network fee deducted on this sub-order"
+          }
+        }
+      },
+      "PayoutBatch": {
+        "type": "object",
+        "required": [
+          "merchantBatchNo",
+          "status",
+          "subOrders"
+        ],
+        "properties": {
+          "merchantBatchNo": {
+            "type": "string"
+          },
+          "batchId": {
+            "type": "string",
+            "description": "the payout batch number, set once submitted"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PayoutStatus"
+          },
+          "subOrders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PayoutSubOrder"
+            }
+          }
+        }
+      },
+      "QuoteRequest": {
+        "type": "object",
+        "required": [
+          "sellCurrency",
+          "buyCurrency"
+        ],
+        "description": "specify exactly one of sellAmount / buyAmount",
+        "properties": {
+          "sellCurrency": {
+            "type": "string"
+          },
+          "buyCurrency": {
+            "type": "string"
+          },
+          "sellAmount": {
+            "type": "string"
+          },
+          "buyAmount": {
+            "type": "string"
+          }
+        }
+      },
+      "ConvertQuote": {
+        "type": "object",
+        "required": [
+          "quoteId",
+          "rate",
+          "sellCurrency",
+          "sellAmount",
+          "buyCurrency",
+          "buyAmount"
+        ],
+        "properties": {
+          "quoteId": {
+            "type": "string"
+          },
+          "rate": {
+            "type": "string"
+          },
+          "sellCurrency": {
+            "type": "string"
+          },
+          "sellAmount": {
+            "type": "string"
+          },
+          "buyCurrency": {
+            "type": "string"
+          },
+          "buyAmount": {
+            "type": "string"
+          }
+        }
+      },
+      "ConvertExecuteRequest": {
+        "type": "object",
+        "required": [
+          "quoteId",
+          "sell",
+          "buy"
+        ],
+        "properties": {
+          "quoteId": {
+            "type": "string",
+            "description": "the quoteId returned by previewConvert (verified live)"
+          },
+          "sell": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "buy": {
+            "$ref": "#/components/schemas/Money"
+          }
+        }
+      },
+      "ConvertOrder": {
+        "type": "object",
+        "required": [
+          "orderId",
+          "status",
+          "sell",
+          "buy"
+        ],
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "the conversion order number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SUCCESS",
+              "FAILED",
+              "PENDING"
+            ]
+          },
+          "sell": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "buy": {
+            "$ref": "#/components/schemas/Money"
+          }
+        }
+      },
+      "SubscriptionPlanRequest": {
+        "type": "object",
+        "required": [
+          "merchantPlanNo",
+          "name",
+          "amount",
+          "interval",
+          "intervalCount",
+          "totalCycles"
+        ],
+        "properties": {
+          "merchantPlanNo": {
+            "type": "string",
+            "description": "your reference + idempotency key for the plan"
+          },
+          "name": {
+            "type": "string"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "DAY",
+              "WEEK",
+              "MONTH",
+              "YEAR"
+            ]
+          },
+          "intervalCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "totalCycles": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "SubscriptionPlan": {
+        "type": "object",
+        "required": [
+          "merchantPlanNo",
+          "planNo",
+          "priceNo",
+          "name",
+          "amount",
+          "interval",
+          "intervalCount",
+          "totalCycles"
+        ],
+        "properties": {
+          "merchantPlanNo": {
+            "type": "string"
+          },
+          "planNo": {
+            "type": "string",
+            "description": "the plan number — pass it as planNo when subscribing a customer"
+          },
+          "priceNo": {
+            "type": "string",
+            "description": "the price/product number the plan references"
+          },
+          "name": {
+            "type": "string"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "interval": {
+            "type": "string",
+            "enum": [
+              "DAY",
+              "WEEK",
+              "MONTH",
+              "YEAR"
+            ]
+          },
+          "intervalCount": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "totalCycles": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SubscribeRequest": {
+        "type": "object",
+        "required": [
+          "merchantSubNo",
+          "planNo"
+        ],
+        "properties": {
+          "merchantSubNo": {
+            "type": "string",
+            "description": "your reference + idempotency key for this subscription"
+          },
+          "planNo": {
+            "type": "string",
+            "description": "the plan number (from a created subscription plan) to subscribe the customer to"
+          },
+          "callbackUrl": {
+            "type": "string"
+          }
+        }
+      },
+      "Subscription": {
+        "type": "object",
+        "required": [
+          "merchantSubNo",
+          "subId",
+          "status",
+          "planNo"
+        ],
+        "properties": {
+          "merchantSubNo": {
+            "type": "string"
+          },
+          "subId": {
+            "type": "string",
+            "description": "the subscription order number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "ACTIVE",
+              "PAST_DUE",
+              "COMPLETED",
+              "CANCELLED",
+              "BLOCKED"
+            ]
+          },
+          "planNo": {
+            "type": "string"
+          },
+          "subscribeUrl": {
+            "type": "string",
+            "description": "hosted customer authorization link"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SubscriptionPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Subscription"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "echo as ?before for the next page; null on the last page"
+          }
+        }
+      },
+      "DeductionOrder": {
+        "type": "object",
+        "required": [
+          "paymentOrderNo",
+          "merchantSubNo",
+          "amount",
+          "status",
+          "ts"
+        ],
+        "properties": {
+          "paymentOrderNo": {
+            "type": "string"
+          },
+          "merchantSubNo": {
+            "type": "string"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "SUCCESS",
+              "FAILED",
+              "BLOCKED",
+              "PENDING"
+            ]
+          },
+          "ts": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "InvoiceRequest": {
+        "type": "object",
+        "required": [
+          "reference",
+          "amount"
+        ],
+        "properties": {
+          "reference": {
+            "type": "string",
+            "description": "order/reference shown to the payer"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "description": {
+            "type": "string"
+          },
+          "customerEmail": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "optional link expiry (epoch ms) — past it the link reads EXPIRED and won't accept payment"
+          },
+          "chain": {
+            "type": "string",
+            "description": "optional — when set, the deposit address is minted up front for this network (invoice flow) and the response is InvoiceWithAddress instead of Invoice"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "invoice",
+              "checkout"
+            ],
+            "default": "invoice",
+            "description": "which manager owns it; defaults to invoice"
+          }
+        }
+      },
+      "InvoiceWithAddress": {
+        "type": "object",
+        "required": [
+          "token",
+          "address",
+          "chain",
+          "currency",
+          "amount"
+        ],
+        "description": "Returned by POST /v1/invoices when `chain` is set — the deposit address minted up front.",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "public /pay/<token> link id"
+          },
+          "address": {
+            "type": "string",
+            "description": "on-chain deposit address to receive payment"
+          },
+          "memo": {
+            "type": "string",
+            "description": "destination tag/memo — present for memo chains (TON, etc.)"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string",
+            "description": "the token to send"
+          },
+          "amount": {
+            "type": "string",
+            "description": "exact amount to send"
+          },
+          "expireTime": {
+            "type": "integer",
+            "format": "int64",
+            "description": "deposit address expiry (epoch ms)"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "invoice link expiry (epoch ms), if set"
+          }
+        }
+      },
+      "CheckoutLink": {
+        "type": "object",
+        "required": [
+          "token",
+          "status"
+        ],
+        "description": "Returned by POST /v1/checkouts — the hosted checkout page to send the payer to.",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "checkoutUrl": {
+            "type": "string",
+            "description": "full hosted checkout URL (when CHECKOUT_BASE_URL is configured)"
+          },
+          "payPath": {
+            "type": "string",
+            "description": "relative /pay/<token> path (when no base URL is configured)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "PAID",
+              "EXPIRED",
+              "VOID"
+            ]
+          },
+          "expiresAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "Invoice": {
+        "type": "object",
+        "required": [
+          "token",
+          "merchantName",
+          "reference",
+          "amount",
+          "status"
+        ],
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "public /pay/<token> link id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "invoice",
+              "checkout"
+            ],
+            "description": "which manager owns it: a billed invoice or a shareable checkout link"
+          },
+          "merchantName": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "description": {
+            "type": "string"
+          },
+          "customerEmail": {
+            "type": "string",
+            "description": "set if you passed one on create"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "PAID",
+              "EXPIRED",
+              "VOID"
+            ]
+          },
+          "txId": {
+            "type": "string"
+          },
+          "paidChain": {
+            "type": "string"
+          },
+          "opens": {
+            "type": "integer",
+            "description": "checkout-link views (conversion funnel)"
+          },
+          "paused": {
+            "type": "boolean",
+            "description": "Live/Paused — a paused link won't accept payment"
+          },
+          "activeDeposit": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DepositOrder"
+              }
+            ],
+            "description": "un-expired deposit to resume on reload (same address + countdown)"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "optional link expiry (epoch ms)"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "paidAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "InvoicePublic": {
+        "type": "object",
+        "required": [
+          "token",
+          "merchantName",
+          "reference",
+          "amount",
+          "status",
+          "paused"
+        ],
+        "description": "The unauthenticated hosted-checkout view — deliberately omits owner-only fields (customerEmail, opens, timestamps).",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "merchantName": {
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "PAID",
+              "EXPIRED",
+              "VOID"
+            ]
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "txId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "optional link expiry (epoch ms)"
+          },
+          "activeDeposit": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/DepositOrder"
+              }
+            ],
+            "description": "un-expired deposit to resume on reload"
+          }
+        }
+      },
+      "InvoicePage": {
+        "type": "object",
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invoice"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "echo as ?before for the next page; null on the last page"
+          }
+        }
+      },
+      "CheckoutStats": {
+        "type": "object",
+        "required": [
+          "activeLinks",
+          "opens",
+          "conversions",
+          "conversionRate",
+          "volume"
+        ],
+        "properties": {
+          "activeLinks": {
+            "type": "integer"
+          },
+          "opens": {
+            "type": "integer"
+          },
+          "conversions": {
+            "type": "integer"
+          },
+          "conversionRate": {
+            "type": "number",
+            "description": "paid / opened, 0..1"
+          },
+          "volume": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "currency",
+                "amount"
+              ],
+              "properties": {
+                "currency": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "AssetChain": {
+        "type": "object",
+        "required": [
+          "currency",
+          "chain",
+          "fullCurrType",
+          "label"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "description": "token the payer sends; the picker spans the full catalog"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "fullCurrType": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "PayQuote": {
+        "type": "object",
+        "required": [
+          "payCurrency",
+          "payAmount",
+          "rate",
+          "quoteId",
+          "invoiceAmount"
+        ],
+        "properties": {
+          "payCurrency": {
+            "type": "string"
+          },
+          "payAmount": {
+            "type": "string",
+            "description": "amount of payCurrency to send so it equals the invoice total"
+          },
+          "rate": {
+            "type": "string",
+            "description": "1 when paying the invoice currency; else the conversion rate"
+          },
+          "quoteId": {
+            "type": "string"
+          },
+          "invoiceAmount": {
+            "$ref": "#/components/schemas/Money"
+          }
+        }
+      },
+      "DepositOrder": {
+        "type": "object",
+        "required": [
+          "prepayId",
+          "merchantTradeNo",
+          "payAmount",
+          "payCurrency",
+          "address",
+          "chain",
+          "fullCurrType"
+        ],
+        "properties": {
+          "prepayId": {
+            "type": "string"
+          },
+          "merchantTradeNo": {
+            "type": "string"
+          },
+          "payAmount": {
+            "type": "string",
+            "description": "exact amount to send (the order's orderAmount)"
+          },
+          "payCurrency": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string",
+            "description": "the on-chain deposit address"
+          },
+          "memo": {
+            "type": "string"
+          },
+          "chain": {
+            "type": "string"
+          },
+          "fullCurrType": {
+            "type": "string"
+          },
+          "expireTime": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "Country": {
+        "type": "object",
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Bank": {
+        "type": "object",
+        "required": [
+          "bankAccountId",
+          "bankAccountName",
+          "bankName",
+          "status"
+        ],
+        "properties": {
+          "bankAccountId": {
+            "type": "string"
+          },
+          "bankAccountName": {
+            "type": "string"
+          },
+          "bankName": {
+            "type": "string"
+          },
+          "countryName": {
+            "type": "string"
+          },
+          "iban": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "pending",
+              "materials",
+              "rejected"
+            ]
+          },
+          "memo": {
+            "type": "string",
+            "description": "review note — the rejection reason when status is rejected"
+          }
+        }
+      },
+      "BankMaterialsRequest": {
+        "type": "object",
+        "description": "supplementary documents when a bank's status is 'materials'. Each file base64; ≤4MB; jpg/png/pdf.",
+        "required": [
+          "certificate",
+          "passport"
+        ],
+        "properties": {
+          "certificate": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "description": "company registration / business license",
+            "items": {
+              "$ref": "#/components/schemas/DocFile"
+            }
+          },
+          "passport": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 5,
+            "description": "government-issued ID",
+            "items": {
+              "$ref": "#/components/schemas/DocFile"
+            }
+          }
+        }
+      },
+      "DocFile": {
+        "type": "object",
+        "required": [
+          "filename",
+          "contentType",
+          "dataBase64"
+        ],
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "dataBase64": {
+            "type": "string"
+          }
+        }
+      },
+      "BankRequest": {
+        "type": "object",
+        "required": [
+          "bankAccountName",
+          "bankName",
+          "countryId",
+          "iban",
+          "file"
+        ],
+        "properties": {
+          "bankAccountName": {
+            "type": "string",
+            "description": "must match the merchant's verified identity"
+          },
+          "bankName": {
+            "type": "string"
+          },
+          "countryId": {
+            "type": "integer"
+          },
+          "iban": {
+            "type": "string"
+          },
+          "swift": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "remittanceLineNumber": {
+            "type": "string"
+          },
+          "file": {
+            "type": "object",
+            "description": "bank statement (base64), used for verification",
+            "required": [
+              "filename",
+              "contentType",
+              "dataBase64"
+            ],
+            "properties": {
+              "filename": {
+                "type": "string"
+              },
+              "contentType": {
+                "type": "string"
+              },
+              "dataBase64": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "OffRampQuoteRequest": {
+        "type": "object",
+        "required": [
+          "cryptoCurrency",
+          "fiatCurrency",
+          "cryptoAmount"
+        ],
+        "properties": {
+          "cryptoCurrency": {
+            "type": "string"
+          },
+          "fiatCurrency": {
+            "type": "string"
+          },
+          "cryptoAmount": {
+            "type": "string",
+            "description": "min 1000 USDT-equivalent"
+          }
+        }
+      },
+      "OffRampQuote": {
+        "type": "object",
+        "required": [
+          "quoteToken",
+          "validPeriod",
+          "cryptoAmount",
+          "fiatAmount",
+          "fiatRate",
+          "cryptoCurrency",
+          "fiatCurrency"
+        ],
+        "properties": {
+          "quoteToken": {
+            "type": "string"
+          },
+          "validPeriod": {
+            "type": "integer"
+          },
+          "cryptoAmount": {
+            "type": "string"
+          },
+          "fiatAmount": {
+            "type": "string"
+          },
+          "fiatRate": {
+            "type": "string"
+          },
+          "cryptoCurrency": {
+            "type": "string"
+          },
+          "fiatCurrency": {
+            "type": "string"
+          }
+        }
+      },
+      "WithdrawRequest": {
+        "type": "object",
+        "required": [
+          "quoteToken",
+          "bankAccountId",
+          "cryptoCurrency",
+          "fiatCurrency",
+          "cryptoAmount",
+          "fiatAmount"
+        ],
+        "properties": {
+          "quoteToken": {
+            "type": "string"
+          },
+          "bankAccountId": {
+            "type": "string"
+          },
+          "cryptoCurrency": {
+            "type": "string"
+          },
+          "fiatCurrency": {
+            "type": "string"
+          },
+          "cryptoAmount": {
+            "type": "string"
+          },
+          "fiatAmount": {
+            "type": "string"
+          }
+        }
+      },
+      "OffRampOrder": {
+        "type": "object",
+        "required": [
+          "orderId",
+          "clientOrderId",
+          "cryptoCurrency",
+          "fiatCurrency",
+          "cryptoAmount",
+          "fiatAmount",
+          "status"
+        ],
+        "properties": {
+          "orderId": {
+            "type": "string"
+          },
+          "clientOrderId": {
+            "type": "string"
+          },
+          "cryptoCurrency": {
+            "type": "string"
+          },
+          "fiatCurrency": {
+            "type": "string"
+          },
+          "cryptoAmount": {
+            "type": "string"
+          },
+          "fiatAmount": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "DISPATCHED",
+              "SUCCESS",
+              "FAILED"
+            ]
+          },
+          "bankSlipInfo": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "OffRampOrderPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffRampOrder"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "echo as ?before for the next page; null on the last page"
+          }
+        }
+      },
+      "GiftTemplate": {
+        "type": "object",
+        "required": [
+          "id",
+          "titleEn",
+          "imageUrl",
+          "coverType"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "titleEn": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "coverType": {
+            "type": "string"
+          }
+        }
+      },
+      "GiftCardRequest": {
+        "type": "object",
+        "required": [
+          "title",
+          "templateId",
+          "amount"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "templateId": {
+            "type": "string"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          }
+        }
+      },
+      "GiftCard": {
+        "type": "object",
+        "required": [
+          "cardNum",
+          "cardKey",
+          "title",
+          "templateId",
+          "amount",
+          "status"
+        ],
+        "properties": {
+          "cardNum": {
+            "type": "string"
+          },
+          "cardKey": {
+            "type": "string",
+            "description": "redemption key — store securely"
+          },
+          "title": {
+            "type": "string"
+          },
+          "templateId": {
+            "type": "string"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "ACTIVE",
+              "REDEEMED",
+              "FROZEN",
+              "FAILED",
+              "REVIEW"
+            ]
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "GiftCardPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GiftCard"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "echo as ?before for the next page; null on the last page"
+          }
+        }
+      },
+      "LedgerEntry": {
+        "type": "object",
+        "required": [
+          "recordId",
+          "ts",
+          "currency",
+          "change",
+          "type"
+        ],
+        "properties": {
+          "recordId": {
+            "type": "string",
+            "description": "the ledger record number"
+          },
+          "ts": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "change": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          }
+        }
+      },
+      "LedgerPage": {
+        "type": "object",
+        "required": [
+          "entries"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LedgerEntry"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "PageLimit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "description": "page size (default 25, max 100)"
+      },
+      "PageBefore": {
+        "name": "before",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "opaque keyset cursor from a prior page's nextCursor"
+      },
+      "SearchQuery": {
+        "name": "q",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "description": "case-insensitive substring search over the list's reference/identifier columns"
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid API key / scope",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/v1/balances": {
+      "get": {
+        "operationId": "getBalances",
+        "summary": "Account balances",
+        "description": "Returns every asset your workspace holds. Each line has an `available` amount (spendable now, e.g. for payouts) and a `locked` amount (reserved against in-flight operations, released when they settle). Read-only; needs the `balances:read` scope.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Balance"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/balances/summary": {
+      "get": {
+        "operationId": "getBalanceSummary",
+        "summary": "Combined balance in one quote currency",
+        "description": "Values your entire balance in a single `quote` currency (default USDT): a combined `total` plus a per-asset breakdown with each asset's converted `value` and the `rate` used. Ideal for a one-number treasury view across mixed assets.",
+        "parameters": [
+          {
+            "name": "quote",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "USDT"
+            },
+            "description": "quote currency for the combined total"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BalanceSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/reconciliation/payments": {
+      "get": {
+        "operationId": "listReconciliationPayments",
+        "summary": "Settled collections by time range",
+        "description": "The settled record of your pay-ins, straight from the ledger — the source of truth for accounting. Filter by time range (`from`/`to`, epoch ms) and page with `limit`/`offset`. Reconcile each row against your own order by its `merchantTradeNo`. Needs `ledger:read`.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "orders"
+                  ],
+                  "properties": {
+                    "orders": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PayOrderRecord"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/reconciliation/withdrawals": {
+      "get": {
+        "operationId": "listReconciliationWithdrawals",
+        "summary": "Payout suborders by time range",
+        "description": "The settled record of your payouts. Filter by time range and page with `limit`/`offset`; match each suborder on `merchantBatchNo`, its suborder id, and the on-chain `txId`. Needs `ledger:read`.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "suborders"
+                  ],
+                  "properties": {
+                    "suborders": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WithdrawSuborderRecord"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/fees/preview": {
+      "get": {
+        "operationId": "previewFee",
+        "summary": "Preview the fee on an order before transacting",
+        "description": "The total fee on a given amount, before you transact.",
+        "parameters": [
+          {
+            "name": "amount",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "paymentType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "CHECKOUT",
+                "WITHDRAWAL",
+                "SUBSCRIPTION",
+                "CONVERSION",
+                "OFFRAMP",
+                "GIFTCARD"
+              ]
+            }
+          },
+          {
+            "name": "tenantId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeePreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/checkout": {
+      "post": {
+        "operationId": "createCheckout",
+        "summary": "Hosted pay-in order",
+        "description": "Body requires amount, chain, merchantUserId, goodsName (terminalType/expiresIn optional). Response carries prepayId, paymentUrl, qrContent, and the per-order on-chain address.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Retry-safe key — drives merchantTradeNo so a re-POST returns the same order, not a duplicate."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutOrder"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/checkout/{merchantTradeNo}": {
+      "get": {
+        "operationId": "getCheckout",
+        "summary": "Poll an order's status",
+        "description": "Fetch a checkout by its `merchantTradeNo` to read its status (`PENDING`/`PROCESS`/`AUDITING` are non-final; `PAID` is settled; `EXPIRED`/`CANCELLED`/`ERROR`/`REJECTED` are terminal failures). Use as the reliable fallback to the `payment.succeeded` webhook — only fulfill once a terminal paid state is reached.",
+        "parameters": [
+          {
+            "name": "merchantTradeNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutOrder"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/refunds": {
+      "post": {
+        "operationId": "createRefund",
+        "summary": "Refund a settled order (full or partial)",
+        "description": "Refund a (portion of a) settled checkout order. Confirmation arrives async via the `charge.refunded` webhook, which reverses the accrued fees. Idempotent on refundRequestId.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundOrder"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/refunds/{id}": {
+      "get": {
+        "operationId": "getRefund",
+        "summary": "Refund status",
+        "description": "Fetch a refund by id and track it from `PENDING` to `REFUND_SUCCESS` (or `REFUND_REJECTED`). The `charge.refunded` webhook fires on success — treat that as the source of truth and process it idempotently on the refund id.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "the refundRequestId returned on create"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundOrder"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/payouts": {
+      "post": {
+        "operationId": "createPayout",
+        "summary": "Batch payout (idempotent via Idempotency-Key)",
+        "description": "Send a batch of one or more payouts from your `available` balance to external addresses; each recipient becomes a suborder you track independently. Accepted synchronously (`202`) and settled asynchronously — watch the `payout.settled` / `payout.partial` / `payout.failed` webhooks. Always send a unique `Idempotency-Key` so a retried request never pays twice. Needs `payouts:write`.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayoutRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutBatch"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/payouts/options": {
+      "get": {
+        "operationId": "listWithdrawOptions",
+        "summary": "Supported chains + withdraw fee/limits for a currency",
+        "description": "List the chains available for a currency, each with its withdraw fee and min/max amounts. Call this before creating a payout to validate the recipient's chain and show accurate costs.",
+        "parameters": [
+          {
+            "name": "currency",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "options"
+                  ],
+                  "properties": {
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WithdrawOption"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/payouts/{id}": {
+      "get": {
+        "operationId": "getPayout",
+        "summary": "Payout status",
+        "description": "Fetch a payout batch by `merchantBatchNo`, including each suborder's status — to reconcile a batch that settled partially, or to poll when a webhook is missed.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayoutBatch"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/deposits/chains": {
+      "get": {
+        "operationId": "listDepositChains",
+        "summary": "Networks a coin can be deposited on",
+        "description": "The networks available to receive funds, each with the coins it accepts. A balance is one number per coin — a deposit on any network credits the same coin balance, so the network is just the rail the sender uses. Use this to build the deposit network selector.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "chains"
+                  ],
+                  "properties": {
+                    "chains": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DepositChain"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/deposits/address": {
+      "post": {
+        "operationId": "createDepositAddress",
+        "summary": "Get a permanent deposit address for a network",
+        "description": "Return your reusable deposit address for the chosen network, creating it on first use. The address is permanent — it never expires, so reuse it for every deposit. Funds received credit your balance for the coin that was sent.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepositAddressRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepositAddress"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/conversions/quote": {
+      "post": {
+        "operationId": "previewConversion",
+        "summary": "Convert quote",
+        "description": "Quote a conversion between two assets: provide `sellCurrency`, `buyCurrency`, and exactly one of `sellAmount` / `buyAmount`. Returns a `quoteId`, the `rate`, and the resulting amounts. Quotes are short-lived — request a fresh one if it expires. Needs `convert:write`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvertQuote"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/conversions": {
+      "post": {
+        "operationId": "executeConversion",
+        "summary": "Execute convert",
+        "description": "Execute a previously quoted conversion by its `quoteId`, moving the balance from the sell asset into the buy asset. Re-quote first if the quote has expired. Needs `convert:write`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConvertExecuteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConvertOrder"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/subscription-plans": {
+      "post": {
+        "operationId": "createSubscriptionPlan",
+        "summary": "Define a reusable subscription plan",
+        "description": "Define a recurring billing plan (`amount`, `interval`, `intervalCount`, `totalCycles`) that customers subscribe to. Returns the plan's number; reuse one plan across many subscriptions. Needs `subscriptions:write`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionPlanRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listSubscriptionPlans",
+        "summary": "List the workspace's plans",
+        "description": "List your subscription plans. Needs `subscriptions:read`.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SubscriptionPlan"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/subscriptions": {
+      "post": {
+        "operationId": "createSubscription",
+        "summary": "Subscribe one of your customers to a plan (returns the authorization link)",
+        "description": "Subscribe a customer to a plan. Returns a hosted URL where the customer authorizes recurring charges; once authorized the subscription becomes active and bills each cycle, firing a `payment.succeeded` webhook per successful deduction. Needs `subscriptions:write`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscribeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listSubscriptions",
+        "summary": "List the workspace's customer subscriptions (keyset-paginated)",
+        "description": "List your subscriptions and their statuses. Needs `subscriptions:read`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "ACTIVE",
+                "PAST_DUE",
+                "COMPLETED",
+                "CANCELLED",
+                "BLOCKED"
+              ]
+            },
+            "description": "narrow to one subscription status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/subscriptions/{merchantSubNo}/deductions": {
+      "get": {
+        "operationId": "listDeductions",
+        "summary": "Billing-cycle history for a subscription",
+        "description": "List the charge (deduction) history for a subscription — one entry per billing cycle — to reconcile recurring revenue.",
+        "parameters": [
+          {
+            "name": "merchantSubNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeductionOrder"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/subscriptions/{merchantSubNo}/cancel": {
+      "post": {
+        "operationId": "cancelSubscription",
+        "summary": "Cancel a subscription",
+        "description": "Cancel a subscription so no further cycles are billed. Already-settled charges are unaffected. Needs `subscriptions:write`.",
+        "parameters": [
+          {
+            "name": "merchantSubNo",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Subscription"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/checkouts": {
+      "post": {
+        "operationId": "createCheckoutLink",
+        "summary": "Create a checkout — returns the hosted /pay page URL (payer picks the asset)",
+        "description": "Create a shareable hosted checkout link where the payer chooses which asset and chain to pay with. Returns a `token` and a `checkoutUrl` to send the customer to. Settles like any pay-in — fulfill on the `payment.succeeded` webhook. Needs `invoices:write`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutLink"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/invoices": {
+      "post": {
+        "operationId": "createInvoice",
+        "summary": "Create an invoice / payment link (pass `chain` to mint a deposit address up front)",
+        "description": "Create an invoice for an amount. Pass a `chain` to mint the on-chain deposit address up front (the payer sends funds directly to it); omit `chain` to let the payer pick the network on the hosted page. Returns a `token` (plus `address`/`chain` when minted). Needs `invoices:write`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created — Invoice (no chain) or InvoiceWithAddress (chain given)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Invoice"
+                    },
+                    {
+                      "$ref": "#/components/schemas/InvoiceWithAddress"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listInvoices",
+        "summary": "List the workspace's invoices (keyset-paginated)",
+        "description": "List invoices and checkout links, filterable by `kind` (`invoice` / `checkout`) and `status` (`OPEN` / `PAID` / `EXPIRED` / `VOID`). Page with `limit` and the `before` cursor. `status=PAID` is your settled pay-ins. Needs `invoices:read`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "invoice",
+                "checkout"
+              ]
+            },
+            "description": "narrow to one manager"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "PAID",
+                "EXPIRED",
+                "VOID"
+              ]
+            },
+            "description": "narrow to a settlement state (e.g. PAID for the pay-ins feed)"
+          },
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoicePage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/invoices/stats": {
+      "get": {
+        "operationId": "getCheckoutStats",
+        "summary": "Aggregate Checkout stats (active links, opens, conversion, volume)",
+        "description": "Aggregate counts and totals across your invoices and checkout links — handy for a dashboard summary. Needs `invoices:read`.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutStats"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/invoices/{token}/pause": {
+      "post": {
+        "operationId": "pauseInvoice",
+        "summary": "Live/Paused toggle for a checkout link",
+        "description": "Pause (or unpause) an open invoice or link so it temporarily stops accepting payment, without voiding it. Needs `invoices:write`.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "paused"
+                ],
+                "properties": {
+                  "paused": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok",
+                    "paused"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "paused": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/invoices/{token}/void": {
+      "post": {
+        "operationId": "voidInvoice",
+        "summary": "Void an open invoice",
+        "description": "Void an invoice or link so it can no longer be paid. Terminal — a voided link cannot be reopened. Needs `invoices:write`.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/public/invoices/{token}": {
+      "get": {
+        "operationId": "getPublicInvoice",
+        "summary": "Public invoice view for the hosted checkout (unauthenticated, by token)",
+        "description": "Public, unauthenticated endpoint (the `token` is the credential — no API key or signature). Fetch a hosted invoice/link to render your own checkout page.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoicePublic"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/public/invoices/{token}/open": {
+      "post": {
+        "operationId": "trackInvoiceOpen",
+        "summary": "Count a checkout-link view (unauthenticated, best-effort)",
+        "description": "Public: record that the payer opened the hosted invoice page (analytics). Has no effect on payment state.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/v1/public/invoices/{token}/assets": {
+      "get": {
+        "operationId": "listInvoiceAssets",
+        "summary": "Full pay-in asset catalog — every token × network (unauthenticated)",
+        "description": "Public: list the chains and tokens the payer may use to pay this invoice, so your checkout UI can offer a choice.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AssetChain"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/public/invoices/{token}/quote": {
+      "post": {
+        "operationId": "quoteInvoicePayIn",
+        "summary": "Live pay-in quote for the chosen token (unauthenticated)",
+        "description": "Public: quote the pay-in for a chosen asset on this invoice — returns the amount and rate the payer will pay. Quotes are short-lived.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "currency"
+                ],
+                "properties": {
+                  "currency": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayQuote"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/public/invoices/{token}/deposit": {
+      "post": {
+        "operationId": "createInvoiceDeposit",
+        "summary": "Mint a deposit address for the chosen asset (unauthenticated)",
+        "description": "Public: mint (or return) the on-chain deposit address for the payer's chosen chain on this invoice, so they can send funds directly.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "currency",
+                  "chain",
+                  "fullCurrType"
+                ],
+                "properties": {
+                  "currency": {
+                    "type": "string"
+                  },
+                  "chain": {
+                    "type": "string"
+                  },
+                  "fullCurrType": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepositOrder"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/public/invoices/{token}/status": {
+      "get": {
+        "operationId": "getInvoiceStatus",
+        "summary": "Poll the invoice's pay status (unauthenticated)",
+        "description": "Public: poll an invoice/link's pay state. `status` is the settlement state (`OPEN` → `PAID`); `phase` tracks the on-chain step (`awaiting` → `confirming` → `settled`). Use it to drive a live status on your checkout page.",
+        "security": [],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "phase"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "OPEN",
+                        "PAID",
+                        "EXPIRED",
+                        "VOID"
+                      ]
+                    },
+                    "phase": {
+                      "type": "string",
+                      "enum": [
+                        "awaiting",
+                        "confirming",
+                        "settled"
+                      ],
+                      "description": "on-chain step: detected+confirming before settled"
+                    },
+                    "txId": {
+                      "type": "string"
+                    },
+                    "received": {
+                      "type": "string",
+                      "description": "amount seen on-chain while confirming"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/offramp/countries": {
+      "get": {
+        "operationId": "listOffRampCountries",
+        "summary": "Supported bank countries (OTC off-ramp)",
+        "description": "List the countries supported for off-ramp (converting crypto to fiat paid to a bank account). Needs `payouts:write`.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Country"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/offramp/banks": {
+      "get": {
+        "operationId": "listOffRampBanks",
+        "summary": "Your registered banks + approval status",
+        "description": "List your registered bank accounts available as off-ramp destinations, with each one's verification status.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Bank"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "operationId": "registerOffRampBank",
+        "summary": "Register a bank (statement base64; reviewed asynchronously)",
+        "description": "Register a bank account as an off-ramp destination. Returns a `bankAccountId`; verification documents are submitted separately and reviewed before the account can receive funds. Needs `payouts:write`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BankRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bank"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/offramp/banks/{bankAccountId}": {
+      "delete": {
+        "operationId": "deleteOffRampBank",
+        "summary": "Remove a linked bank account",
+        "description": "Remove a registered off-ramp bank account. Needs `payouts:write`.",
+        "parameters": [
+          {
+            "name": "bankAccountId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/offramp/banks/{bankAccountId}/materials": {
+      "post": {
+        "operationId": "submitOffRampBankMaterials",
+        "summary": "Submit supplementary documents for a bank under review",
+        "description": "Upload the verification documents (multipart) for a registered bank account. The account becomes usable once review passes.",
+        "parameters": [
+          {
+            "name": "bankAccountId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BankMaterialsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/offramp/quote": {
+      "post": {
+        "operationId": "offRampQuote",
+        "summary": "SELL quote (crypto → fiat); min 1000 USDT-equivalent",
+        "description": "Quote an off-ramp: provide `cryptoCurrency`, `fiatCurrency`, and `cryptoAmount`. Returns a `quoteToken` with the fiat amount, rate, and fees. Subject to a per-transaction minimum; quotes are short-lived. Needs `payouts:write`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffRampQuoteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffRampQuote"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/offramp/withdraw": {
+      "post": {
+        "operationId": "offRampWithdraw",
+        "summary": "Create an off-ramp withdraw order against a quote + approved bank",
+        "description": "Execute an off-ramp withdrawal against a `quoteToken` to a registered `bankAccountId`. Settles asynchronously and reports via the payout webhooks. Needs `payouts:write`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffRampOrder"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/offramp/orders": {
+      "get": {
+        "operationId": "listOffRampOrders",
+        "summary": "Your off-ramp orders (keyset-paginated)",
+        "description": "List your off-ramp withdrawal orders and their statuses, for reconciliation.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "DISPATCHED",
+                "SUCCESS",
+                "FAILED"
+              ]
+            },
+            "description": "narrow to one order status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffRampOrderPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/giftcards/templates": {
+      "get": {
+        "operationId": "listGiftTemplates",
+        "summary": "Gift-card cover templates",
+        "description": "List the available gift-card templates (designs) you can issue cards from.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GiftTemplate"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/giftcards": {
+      "post": {
+        "operationId": "createGiftCard",
+        "summary": "Issue a prepaid gift card (funded from the workspace balance)",
+        "description": "Issue a gift card. Requires a `title`, a `templateId` (from the templates list), and an `amount`. Returns the created card's number and details to hand to the recipient.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GiftCardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftCard"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listGiftCards",
+        "summary": "Your issued gift cards (keyset-paginated)",
+        "description": "List the gift cards you have issued.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "ACTIVE",
+                "REDEEMED",
+                "FROZEN",
+                "FAILED",
+                "REVIEW"
+              ]
+            },
+            "description": "narrow to one card status"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftCardPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/giftcards/{cardNum}": {
+      "get": {
+        "operationId": "getGiftCard",
+        "summary": "Poll a gift card's status",
+        "description": "Fetch a single issued gift card by its card number.",
+        "parameters": [
+          {
+            "name": "cardNum",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GiftCard"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/transactions": {
+      "get": {
+        "operationId": "listTransactions",
+        "summary": "Unified ledger / reconciliation",
+        "description": "The unified ledger of every movement — pay-ins, payouts, conversions, and fees — in one time-boxed, paginated list. Filter with `from`/`to` (epoch ms) and page with `limit`/`offset`; set `format=csv` for an export. Needs `ledger:read`.",
+        "parameters": [
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "csv"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerPage"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    }
+  }
+}
