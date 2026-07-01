@@ -280,8 +280,9 @@ class Subscriptions(_Resource):
         }
         return self._c.request("POST", "/v1/subscription-plans", body)
 
-    def list(self) -> Json:
-        return self._c.request("GET", "/v1/subscriptions")
+    def list(self, *, limit: Optional[int] = None, before: Optional[str] = None, status: Optional[str] = None) -> Json:
+        """Keyset-paginated. Pass a prior page's ``nextCursor`` as ``before`` for the next page."""
+        return self._c.request("GET", "/v1/subscriptions" + qs({"limit": limit, "before": before, "status": status}))
 
     def create(self, *, merchant_sub_no: str, plan_no: str, callback_url: Optional[str] = None) -> Json:
         body = clean({"merchantSubNo": merchant_sub_no, "planNo": plan_no, "callbackUrl": callback_url})
@@ -301,8 +302,9 @@ class GiftCards(_Resource):
     def templates(self) -> Json:
         return self._c.request("GET", "/v1/giftcards/templates")
 
-    def list(self) -> Json:
-        return self._c.request("GET", "/v1/giftcards")
+    def list(self, *, limit: Optional[int] = None, before: Optional[str] = None, status: Optional[str] = None) -> Json:
+        """Keyset-paginated. Pass a prior page's ``nextCursor`` as ``before`` for the next page."""
+        return self._c.request("GET", "/v1/giftcards" + qs({"limit": limit, "before": before, "status": status}))
 
     def get(self, card_num: str) -> Json:
         return self._c.request("GET", f"/v1/giftcards/{path_seg(card_num)}")
@@ -345,8 +347,9 @@ class OffRamp(_Resource):
         }
         return self._c.request("POST", "/v1/offramp/withdraw", body)
 
-    def orders(self) -> Json:
-        return self._c.request("GET", "/v1/offramp/orders")
+    def orders(self, *, limit: Optional[int] = None, before: Optional[str] = None, status: Optional[str] = None) -> Json:
+        """Keyset-paginated. Pass a prior page's ``nextCursor`` as ``before`` for the next page."""
+        return self._c.request("GET", "/v1/offramp/orders" + qs({"limit": limit, "before": before, "status": status}))
 
 
 class Transactions(_Resource):
