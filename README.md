@@ -42,6 +42,7 @@ invoice = ap.invoices.create(
     reference="order-123",
     amount={"amount": "25.00", "currency": "USDT"},
     chain="MATIC",  # mint the deposit address up front; omit to let the payer pick
+    redirect_url="https://shop.example.com/thank-you",  # payer returns here when done
 )
 print(invoice["token"])
 ```

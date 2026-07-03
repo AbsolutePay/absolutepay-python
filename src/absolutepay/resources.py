@@ -391,7 +391,8 @@ class _PublicInvoices(_Resource):
             token: The invoice's public token (from the hosted link / invoice creation).
 
         Returns:
-            A dict with the payer-visible invoice details (amount, description, status).
+            A dict with the payer-visible invoice details (amount, description, status, and
+            `redirectUrl` if the invoice was created with one).
 
         Raises:
             AbsolutePayError: on a non-2xx response.
@@ -503,6 +504,7 @@ class Invoices(_Resource):
         customer_email: Optional[str] = None,
         expires_at: Optional[int] = None,
         chain: Optional[str] = None,
+        redirect_url: Optional[str] = None,
     ) -> Json:
         """Create an invoice for a fixed amount.
 
@@ -515,10 +517,14 @@ class Invoices(_Resource):
             expires_at: Optional expiry as epoch MILLISECONDS.
             chain: Optional chain/network; passing it mints the deposit address up front
                 instead of letting the payer choose an asset later.
+            redirect_url: Optional http(s) URL. When the hosted checkout reaches a terminal
+                state the payer's browser is redirected here with
+                `?token=<invoiceToken>&status=<SUCCESS|EXPIRED|CANCELED>` appended (any
+                existing query is preserved). Echoed back on the invoice as `redirectUrl`.
 
         Returns:
-            A dict describing the created invoice (its `token`, hosted URL, amount, status, and
-            — if `chain` was given — the deposit address).
+            A dict describing the created invoice (its `token`, hosted URL, amount, status,
+            `redirectUrl` if set, and — if `chain` was given — the deposit address).
 
         Raises:
             AbsolutePayError: on a non-2xx response.
@@ -542,6 +548,7 @@ class Invoices(_Resource):
                 "customerEmail": customer_email,
                 "expiresAt": expires_at,
                 "chain": chain,
+                "redirectUrl": redirect_url,
             }
         )
         return self._c.request("POST", "/v1/invoices", body)
@@ -554,6 +561,7 @@ class Invoices(_Resource):
         description: Optional[str] = None,
         customer_email: Optional[str] = None,
         expires_at: Optional[int] = None,
+        redirect_url: Optional[str] = None,
     ) -> Json:
         """Create a hosted checkout link where the payer picks the asset on the page.
 
@@ -567,9 +575,14 @@ class Invoices(_Resource):
             description: Optional human-readable description shown to the payer.
             customer_email: Optional payer email.
             expires_at: Optional expiry as epoch MILLISECONDS.
+            redirect_url: Optional http(s) URL. When the hosted checkout reaches a terminal
+                state the payer's browser is redirected here with
+                `?token=<invoiceToken>&status=<SUCCESS|EXPIRED|CANCELED>` appended (any
+                existing query is preserved). Echoed back on the invoice as `redirectUrl`.
 
         Returns:
-            A dict describing the created checkout link (its `token` and hosted URL).
+            A dict describing the created checkout link (its `token`, hosted URL, and
+            `redirectUrl` if set).
 
         Raises:
             AbsolutePayError: on a non-2xx response.
@@ -581,6 +594,7 @@ class Invoices(_Resource):
                 "description": description,
                 "customerEmail": customer_email,
                 "expiresAt": expires_at,
+                "redirectUrl": redirect_url,
             }
         )
         return self._c.request("POST", "/v1/checkouts", body)
