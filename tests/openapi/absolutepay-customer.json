@@ -796,7 +796,8 @@
           "nextCursor": {
             "type": "string",
             "nullable": true,
-            "description": "echo as ?before for the next page; null on the last page"
+            "example": "eyJpZCI6IjAxSlgwUTdBQiIsInRzIjoxNzE5NzkyMDAwMDAwfQ",
+            "description": "Response-only opaque keyset cursor — you don't set it. To fetch the next page, pass this value back as the `before` query param. `null` means this was the last page."
           }
         }
       },
@@ -838,8 +839,10 @@
         "type": "object",
         "required": [
           "reference",
-          "amount"
+          "amount",
+          "chain"
         ],
+        "description": "Create an invoice — the deposit address is minted up front for `chain` (response is InvoiceWithAddress). For a payer-picks hosted link, use POST /v1/checkouts instead.",
         "properties": {
           "reference": {
             "type": "string",
@@ -859,9 +862,47 @@
             "format": "int64",
             "description": "optional link expiry (epoch ms) — past it the link reads EXPIRED and won't accept payment"
           },
+          "redirectUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "http(s) URL — the payer is redirected here once the checkout reaches a terminal state, appending ?token=<token>&status=<SUCCESS|EXPIRED|CANCELED>"
+          },
           "chain": {
             "type": "string",
-            "description": "optional — when set, the deposit address is minted up front for this network (invoice flow) and the response is InvoiceWithAddress instead of Invoice"
+            "description": "REQUIRED — the network the deposit address is minted on, up front"
+          }
+        }
+      },
+      "CheckoutLinkRequest": {
+        "type": "object",
+        "required": [
+          "reference",
+          "amount"
+        ],
+        "description": "Create a hosted checkout link (payer picks the asset/chain on the /pay page).",
+        "properties": {
+          "reference": {
+            "type": "string",
+            "description": "order/reference shown to the payer"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/Money"
+          },
+          "description": {
+            "type": "string"
+          },
+          "customerEmail": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "optional link expiry (epoch ms) — past it the link reads EXPIRED and won't accept payment"
+          },
+          "redirectUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "http(s) URL — the payer is redirected here once the checkout reaches a terminal state, appending ?token=<token>&status=<SUCCESS|EXPIRED|CANCELED>"
           },
           "kind": {
             "type": "string",
@@ -869,8 +910,8 @@
               "invoice",
               "checkout"
             ],
-            "default": "invoice",
-            "description": "which manager owns it; defaults to invoice"
+            "default": "checkout",
+            "description": "which manager owns it; defaults to checkout"
           }
         }
       },
@@ -883,7 +924,7 @@
           "currency",
           "amount"
         ],
-        "description": "Returned by POST /v1/invoices when `chain` is set — the deposit address minted up front.",
+        "description": "Returned by POST /v1/invoices — the deposit address minted up front for the given chain.",
         "properties": {
           "token": {
             "type": "string",
@@ -1028,6 +1069,11 @@
             "format": "int64",
             "description": "optional link expiry (epoch ms)"
           },
+          "redirectUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "merchant return URL, if set on create"
+          },
           "createdAt": {
             "type": "integer",
             "format": "int64"
@@ -1055,6 +1101,10 @@
           },
           "merchantName": {
             "type": "string"
+          },
+          "appName": {
+            "type": "string",
+            "description": "the app that created this checkout (shown on the page) — set only when created via an app's API"
           },
           "reference": {
             "type": "string"
@@ -1085,6 +1135,11 @@
             "format": "int64",
             "description": "optional link expiry (epoch ms)"
           },
+          "redirectUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "merchant return URL — the page redirects here on a terminal state with ?token=&status="
+          },
           "activeDeposit": {
             "allOf": [
               {
@@ -1111,7 +1166,8 @@
           "nextCursor": {
             "type": "string",
             "nullable": true,
-            "description": "echo as ?before for the next page; null on the last page"
+            "example": "eyJpZCI6IjAxSlgwUTdBQiIsInRzIjoxNzE5NzkyMDAwMDAwfQ",
+            "description": "Response-only opaque keyset cursor — you don't set it. To fetch the next page, pass this value back as the `before` query param. `null` means this was the last page."
           }
         }
       },
@@ -1560,7 +1616,8 @@
           "nextCursor": {
             "type": "string",
             "nullable": true,
-            "description": "echo as ?before for the next page; null on the last page"
+            "example": "eyJpZCI6IjAxSlgwUTdBQiIsInRzIjoxNzE5NzkyMDAwMDAwfQ",
+            "description": "Response-only opaque keyset cursor — you don't set it. To fetch the next page, pass this value back as the `before` query param. `null` means this was the last page."
           }
         }
       },
@@ -1666,7 +1723,8 @@
           "nextCursor": {
             "type": "string",
             "nullable": true,
-            "description": "echo as ?before for the next page; null on the last page"
+            "example": "eyJpZCI6IjAxSlgwUTdBQiIsInRzIjoxNzE5NzkyMDAwMDAwfQ",
+            "description": "Response-only opaque keyset cursor — you don't set it. To fetch the next page, pass this value back as the `before` query param. `null` means this was the last page."
           }
         }
       },
@@ -1737,9 +1795,10 @@
         "in": "query",
         "required": false,
         "schema": {
-          "type": "string"
+          "type": "string",
+          "example": "eyJpZCI6IjAxSlgwUTdBQiIsInRzIjoxNzE5NzkyMDAwMDAwfQ"
         },
-        "description": "opaque keyset cursor from a prior page's nextCursor"
+        "description": "Opaque keyset cursor for paging. Omit for the first page; to fetch the next page, pass the previous response's `nextCursor` here. Don't construct or parse it."
       },
       "SearchQuery": {
         "name": "q",
@@ -2604,7 +2663,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/InvoiceRequest"
+                "$ref": "#/components/schemas/CheckoutLinkRequest"
               }
             }
           }
@@ -2632,8 +2691,8 @@
     "/v1/invoices": {
       "post": {
         "operationId": "createInvoice",
-        "summary": "Create an invoice / payment link (pass `chain` to mint a deposit address up front)",
-        "description": "Create an invoice for an amount. Pass a `chain` to mint the on-chain deposit address up front (the payer sends funds directly to it); omit `chain` to let the payer pick the network on the hosted page. Returns a `token` (plus `address`/`chain` when minted). Needs `invoices:write`.",
+        "summary": "Create an invoice — mints the deposit address up front for `chain`",
+        "description": "Create an invoice for an amount on a specific `chain` (required); the on-chain deposit address is minted up front and the payer sends funds directly to it. For a payer-picks hosted link, use POST /v1/checkouts. Returns a `token` + `address`/`chain`/`amount`. Needs `invoices:write`.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2646,18 +2705,11 @@
         },
         "responses": {
           "201": {
-            "description": "Created — Invoice (no chain) or InvoiceWithAddress (chain given)",
+            "description": "Created — the invoice + its minted deposit address",
             "content": {
               "application/json": {
                 "schema": {
-                  "oneOf": [
-                    {
-                      "$ref": "#/components/schemas/Invoice"
-                    },
-                    {
-                      "$ref": "#/components/schemas/InvoiceWithAddress"
-                    }
-                  ]
+                  "$ref": "#/components/schemas/InvoiceWithAddress"
                 }
               }
             }
@@ -2913,8 +2965,8 @@
     "/v1/public/invoices/{token}/assets": {
       "get": {
         "operationId": "listInvoiceAssets",
-        "summary": "Full pay-in asset catalog — every token × network (unauthenticated)",
-        "description": "Public: list the chains and tokens the payer may use to pay this invoice, so your checkout UI can offer a choice.",
+        "summary": "Networks for the invoice currency (unauthenticated)",
+        "description": "Public: list the networks the payer can use to pay this invoice in its own currency (the coin is fixed when the link is created), so your checkout UI can offer a network choice.",
         "security": [],
         "parameters": [
           {

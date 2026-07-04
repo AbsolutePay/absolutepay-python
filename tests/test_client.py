@@ -81,6 +81,26 @@ def test_builds_query_and_serializes_post_body(monkeypatch):
     assert cap2["headers"]["content-type"] == "application/json"
 
 
+def test_invoice_redirect_url_included_when_provided_omitted_otherwise(monkeypatch):
+    amount = {"amount": "1.00", "currency": "USDT"}
+
+    cap = install(monkeypatch, 201, {"token": "inv_1"})
+    client().invoices.create(reference="r1", amount=amount, redirect_url="https://shop.example.com/done")
+    assert json.loads(cap["body"])["redirectUrl"] == "https://shop.example.com/done"
+
+    cap2 = install(monkeypatch, 201, {"token": "inv_2"})
+    client().invoices.create(reference="r2", amount=amount)
+    assert "redirectUrl" not in json.loads(cap2["body"])
+
+    cap3 = install(monkeypatch, 201, {"token": "chk_1"})
+    client().invoices.create_checkout(reference="c1", amount=amount, redirect_url="https://shop.example.com/done")
+    assert json.loads(cap3["body"])["redirectUrl"] == "https://shop.example.com/done"
+
+    cap4 = install(monkeypatch, 201, {"token": "chk_2"})
+    client().invoices.create_checkout(reference="c2", amount=amount)
+    assert "redirectUrl" not in json.loads(cap4["body"])
+
+
 def test_maps_non_2xx_into_error(monkeypatch):
     install(monkeypatch, 403, {"code": "forbidden", "title": "requires invoices:read"})
     with pytest.raises(AbsolutePayError) as ei:
