@@ -69,6 +69,21 @@ def test_signs_every_request_and_sends_bearer(monkeypatch):
     assert cap["headers"]["x-absolutepay-nonce"]
 
 
+def test_sends_default_user_agent(monkeypatch):
+    # Cloudflare/WAF blocks urllib's default UA; we must identify the SDK explicitly.
+    cap = install(monkeypatch, 200, {"items": []})
+    client().balances.list()
+    ua = cap["headers"]["user-agent"]
+    assert ua.startswith("absolutepay-python/")
+    assert "python-urllib" not in ua.lower()
+
+
+def test_user_agent_is_overridable_via_extra_headers(monkeypatch):
+    cap = install(monkeypatch, 200, {"items": []})
+    client().request("GET", "/v1/balances", None, {"user-agent": "my-app/9.9"})
+    assert cap["headers"]["user-agent"] == "my-app/9.9"
+
+
 def test_builds_query_and_serializes_post_body(monkeypatch):
     cap = install(monkeypatch, 200, {"items": [], "nextCursor": None})
     client().checkouts.list(status="open", q="acme")

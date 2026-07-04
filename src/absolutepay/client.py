@@ -33,6 +33,25 @@ PRODUCTION_BASE = "https://api.absolutepay.io"
 SANDBOX_BASE = "https://sandbox-api.absolutepay.io"
 
 
+def _sdk_version() -> str:
+    """Resolve the installed package version (falls back when running from an uninstalled tree)."""
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            return version("absolutepay")
+        except PackageNotFoundError:
+            return "0.0.0"
+    except ImportError:  # pragma: no cover - importlib.metadata is stdlib on 3.9+
+        return "0.0.0"
+
+
+#: Default ``User-Agent`` sent on every request. Some edge/WAF layers (e.g. Cloudflare) block
+#: urllib's default UA, so we identify the SDK explicitly. Overridable per request via
+#: ``extra_headers``.
+USER_AGENT = f"absolutepay-python/{_sdk_version()}"
+
+
 class AbsolutePay:
     """AbsolutePay API client — compose once, then reach the REST surface via resource groups.
 
@@ -150,12 +169,13 @@ class AbsolutePay:
                 `code == "network_error"`).
         """
         body_str = json.dumps(body, separators=(",", ":")) if body is not None else ""
-        headers: dict[str, str] = {"authorization": f"Bearer {self._api_key}"}
+        headers: dict[str, str] = {"authorization": f"Bearer {self._api_key}", "user-agent": USER_AGENT}
         if body is not None:
             headers["content-type"] = "application/json"
         if self._signing_secret:
             headers.update(sign_request(self._signing_secret, method, path, body_str))
-        # Extra headers (e.g. Idempotency-Key) are NOT part of the signed canonical string, so merge after signing.
+        # Extra headers (e.g. Idempotency-Key, a caller-supplied User-Agent) are NOT part of the
+        # signed canonical string, so merge after signing; a caller's user-agent overrides the default.
         if extra_headers:
             headers.update(extra_headers)
 
