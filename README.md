@@ -56,7 +56,16 @@ Amounts are plain dicts — a decimal string plus a currency code:
 
 ## Resources
 
-`balances` · `fees` · `payments` · `payouts` · `refunds` · `conversions` · `invoices` (+ `invoices.public`) · `subscriptions` · `giftcards` · `offramp` · `transactions`
+`balances` · `fees` · `payouts` · `refunds` · `conversions` · `invoices` (+ `invoices.public`) · `subscriptions` · `giftcards` · `offramp` · `transactions`
+
+```python
+# Hosted checkout link — the payer picks which asset/chain to pay with
+checkout = ap.invoices.create_checkout(
+    reference="order-123",
+    amount={"amount": "25.00", "currency": "USDT"},
+)
+print(checkout["checkoutUrl"])  # send the payer here; confirm via the payment.succeeded webhook
+```
 
 ```python
 # Batch payout (idempotent — a retry with the same key never pays twice)

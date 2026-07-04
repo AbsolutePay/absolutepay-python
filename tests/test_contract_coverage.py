@@ -23,8 +23,6 @@ OP_MAP = {
     "getBalances": "balances.list",
     "getBalanceSummary": "balances.summary",
     "previewFee": "fees.preview",
-    "createCheckout": "payments.create_checkout",
-    "getCheckout": "payments.get_checkout",
     "createRefund": "refunds.create",
     "getRefund": "refunds.get",
     "createPayout": "payouts.create",
