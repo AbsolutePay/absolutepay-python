@@ -299,77 +299,19 @@ class Conversions(_Resource):
 
 
 class _PublicInvoices(_Resource):
-    """Payer-facing invoice endpoints for building a custom hosted checkout page.
+    """Payer-facing, token-keyed public invoice endpoints.
 
-    These back the public payment page a customer sees; they are keyed by the invoice's public
-    `token` (not by tenant credentials). Reachable via `client.invoices.public`.
+    These are keyed by the invoice's public `token` (not by tenant credentials) and back the
+    hosted `/pay` page. Reachable via `client.invoices.public`. Merchants should share the
+    hosted checkout link rather than build their own payer UI; `status` here is the poll
+    fallback for confirming settlement when you can't rely on the `payment.succeeded` webhook.
     """
 
-    def get(self, token: str) -> Json:
-        """Fetch the public invoice details for a payment page.
-
-        Args:
-            token: The invoice's public token (from the hosted link / invoice creation).
-
-        Returns:
-            A dict with the payer-visible invoice details (amount, description, status, and
-            `redirectUrl` if the invoice was created with one).
-
-        Raises:
-            AbsolutePayError: on a non-2xx response.
-        """
-        return self._c.request("GET", f"/v1/public/invoices/{path_seg(token)}")
-
-    def assets(self, token: str) -> Json:
-        """List the assets/chains the payer may use to pay this invoice.
-
-        Args:
-            token: The invoice's public token.
-
-        Returns:
-            A dict/list of selectable currency + chain options.
-
-        Raises:
-            AbsolutePayError: on a non-2xx response.
-        """
-        return self._c.request("GET", f"/v1/public/invoices/{path_seg(token)}/assets")
-
-    def deposit(self, token: str, *, currency: str, chain: str, full_curr_type: str) -> Json:
-        """Mint (or fetch) the deposit address for the payer's chosen asset.
-
-        Args:
-            token: The invoice's public token.
-            currency: The chosen currency, e.g. `"USDT"`.
-            chain: The chosen chain/network, e.g. `"TRX"`.
-            full_curr_type: The provider's full currency-type identifier for the selection
-                (sent as `fullCurrType`).
-
-        Returns:
-            A dict with the deposit `address` (and chain/memo where applicable).
-
-        Raises:
-            AbsolutePayError: on a non-2xx response.
-        """
-        body = {"currency": currency, "chain": chain, "fullCurrType": full_curr_type}
-        return self._c.request("POST", f"/v1/public/invoices/{path_seg(token)}/deposit", body)
-
-    def quote(self, token: str, *, currency: str) -> Json:
-        """Quote how much of a chosen currency is needed to settle the invoice.
-
-        Args:
-            token: The invoice's public token.
-            currency: The currency the payer intends to pay in.
-
-        Returns:
-            A dict with the crypto amount due and the rate used.
-
-        Raises:
-            AbsolutePayError: on a non-2xx response.
-        """
-        return self._c.request("POST", f"/v1/public/invoices/{path_seg(token)}/quote", {"currency": currency})
-
     def status(self, token: str) -> Json:
-        """Poll the current payment status of a public invoice.
+        """Poll the current payment status of a public invoice (settlement-confirmation fallback).
+
+        Prefer the `payment.succeeded` webhook to confirm settlement; use this as the poll
+        fallback when a webhook can't be received.
 
         Args:
             token: The invoice's public token.
