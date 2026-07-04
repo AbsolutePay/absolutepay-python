@@ -20,7 +20,6 @@ from .resources import (
     GiftCards,
     Invoices,
     OffRamp,
-    Payments,
     Payouts,
     Reconciliation,
     Refunds,
@@ -37,7 +36,7 @@ SANDBOX_BASE = "https://sandbox-api.absolutepay.io"
 class AbsolutePay:
     """AbsolutePay API client — compose once, then reach the REST surface via resource groups.
 
-    Each API area hangs off the instance as an attribute: `balances`, `fees`, `payments`,
+    Each API area hangs off the instance as an attribute: `balances`, `fees`,
     `payouts`, `refunds`, `conversions`, `invoices`, `subscriptions`, `giftcards`, `offramp`,
     `transactions`, `reconciliation`, and `deposits`. Every call returns parsed JSON and raises
     `AbsolutePayError` on a non-2xx response.
@@ -73,12 +72,11 @@ class AbsolutePay:
             signing_secret="apisign_...",
         )
         balances = client.balances.list()
-        checkout = client.payments.create_checkout(
+        checkout = client.invoices.create_checkout(
+            reference="order-2026-0001",
             amount={"amount": "10.00", "currency": "USDT"},
-            chain="TRX",
-            merchant_user_id=1001,
-            goods_name="Pro plan",
         )
+        print(checkout["checkoutUrl"])
         ```
     """
 
@@ -107,7 +105,6 @@ class AbsolutePay:
 
         self.balances = Balances(self)
         self.fees = Fees(self)
-        self.payments = Payments(self)
         self.payouts = Payouts(self)
         self.refunds = Refunds(self)
         self.conversions = Conversions(self)
@@ -129,7 +126,7 @@ class AbsolutePay:
         """Send one signed HTTP request and return the parsed JSON body.
 
         This is the low-level transport shared by every resource method. Most callers use the
-        resource helpers (`client.balances.list()`, `client.payments.create_checkout(...)`,
+        resource helpers (`client.balances.list()`, `client.invoices.create_checkout(...)`,
         etc.) instead of calling this directly. The `authorization: Bearer` header and, when a
         `signing_secret` is configured, the HMAC signature headers are attached here. Extra
         headers (e.g. `Idempotency-Key`) are merged *after* signing so they stay outside the
@@ -138,7 +135,7 @@ class AbsolutePay:
         Args:
             method: HTTP verb (`"GET"`, `"POST"`, ...); case-insensitive.
             path: Request path including any query string, e.g. `"/v1/balances"` or
-                `"/v1/checkout/abc?foo=bar"`. Must match exactly what gets signed.
+                `"/v1/invoices/abc?foo=bar"`. Must match exactly what gets signed.
             body: JSON-serializable request body, or `None` for no body. When present, it is
                 compact-serialized and a `content-type: application/json` header is added.
             extra_headers: Optional additional headers merged after signing (not covered by
