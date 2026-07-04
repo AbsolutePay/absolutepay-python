@@ -22,7 +22,6 @@ from .resources import (
     Invoices,
     OffRamp,
     Payouts,
-    Plans,
     Reconciliation,
     Refunds,
     Subscriptions,
@@ -38,9 +37,9 @@ class AbsolutePay:
     """AbsolutePay API client — compose once, then reach the REST surface via resource groups.
 
     Each API area hangs off the instance as an attribute: `balances`, `fees`,
-    `payouts`, `refunds`, `conversions`, `checkouts`, `invoices`, `plans`, `subscriptions`,
-    `giftcards`, `offramp`, `reconciliation`, and `deposits`. Every call returns parsed JSON and
-    raises `AbsolutePayError` on a non-2xx response.
+    `payouts`, `refunds`, `conversions`, `checkouts`, `invoices`, `subscriptions` (with a nested
+    `subscriptions.plans`), `giftcards`, `offramp`, `reconciliation`, and `deposits`. Every call
+    returns parsed JSON and raises `AbsolutePayError` on a non-2xx response.
 
     This is a **server-side** client: the API key and signing secret authenticate as your
     workspace and must never reach a browser or mobile app. When `signing_secret` is set,
@@ -111,7 +110,6 @@ class AbsolutePay:
         self.conversions = Conversions(self)
         self.checkouts = Checkouts(self)
         self.invoices = Invoices(self)
-        self.plans = Plans(self)
         self.subscriptions = Subscriptions(self)
         self.giftcards = GiftCards(self)
         self.offramp = OffRamp(self)

@@ -10,7 +10,7 @@ echoing ``nextCursor`` back as ``before``; ``nextCursor is None`` means the last
 
 **Idempotency.** Money POSTs (``payouts.create``, ``refunds.create``,
 ``conversions.execute``, ``offramp.withdraw``, ``giftcards.create``,
-``subscriptions.create``, ``plans.create``) accept ``idempotency_key=`` which is sent as the
+``subscriptions.create``, ``subscriptions.plans.create``) accept ``idempotency_key=`` which is sent as the
 ``Idempotency-Key`` header (outside the request signature). Replaying the same key returns the
 original result instead of acting twice; a ``409`` surfaces as a normal
 :class:`AbsolutePayError` (inspect ``.code``).
@@ -794,8 +794,17 @@ class Plans(_Resource):
 class Subscriptions(_Resource):
     """Recurring subscriptions (scope: `subscriptions:write`; reads use `subscriptions:read`).
 
-    Plans live on the sibling `client.plans` resource.
+    Plans live on the nested `client.subscriptions.plans` resource (a `Plans`).
     """
+
+    def __init__(self, client: "AbsolutePay") -> None:
+        """Wire up the subscriptions resource and its nested `plans` sub-resource.
+
+        Args:
+            client: The parent `AbsolutePay` client used for requests.
+        """
+        super().__init__(client)
+        self.plans = Plans(client)
 
     def list(
         self,
@@ -837,7 +846,7 @@ class Subscriptions(_Resource):
 
         Args:
             merchant_sub_no: Your unique reference for this subscription.
-            plan_no: The plan number to subscribe to (from `client.plans`).
+            plan_no: The plan number to subscribe to (from `client.subscriptions.plans`).
             callback_url: Optional per-subscription callback URL for lifecycle notifications.
             idempotency_key: Optional retry-safety key; sent as the `Idempotency-Key` header.
 

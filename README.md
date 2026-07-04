@@ -65,7 +65,7 @@ Amounts are plain dicts — a decimal string plus a currency code:
 
 ## Resources
 
-`balances` · `fees` · `payouts` · `refunds` · `conversions` · `checkouts` · `invoices` · `deposits` · `plans` · `subscriptions` · `giftcards` · `offramp` · `reconciliation`
+`balances` · `fees` · `payouts` · `refunds` · `conversions` · `checkouts` · `invoices` · `deposits` · `subscriptions` (+ `subscriptions.plans`) · `giftcards` · `offramp` · `reconciliation`
 
 Both `checkouts` and `invoices` expose the same CRUD: `create` · `list` · `get` · `update` · `delete`.
 
@@ -85,7 +85,7 @@ refunds = ap.refunds.list(from_=1_700_000_000_000, to=1_800_000_000_000, currenc
 
 ### Idempotency
 
-Money POSTs — `payouts.create`, `refunds.create`, `conversions.execute`, `offramp.withdraw`, `giftcards.create`, `subscriptions.create`, `plans.create` — accept `idempotency_key=`, sent as the `Idempotency-Key` header (a retry with the same key never acts twice; a `409` surfaces as a normal `AbsolutePayError`).
+Money POSTs — `payouts.create`, `refunds.create`, `conversions.execute`, `offramp.withdraw`, `giftcards.create`, `subscriptions.create`, `subscriptions.plans.create` — accept `idempotency_key=`, sent as the `Idempotency-Key` header (a retry with the same key never acts twice; a `409` surfaces as a normal `AbsolutePayError`).
 
 ```python
 # Batch payout (idempotent — a retry with the same key never pays twice)

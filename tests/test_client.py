@@ -161,7 +161,7 @@ def test_idempotency_key_wired_on_all_money_posts(monkeypatch):
         ),
         lambda c: c.giftcards.create(title="t", template_id="tpl", amount=amount, idempotency_key="k"),
         lambda c: c.subscriptions.create(merchant_sub_no="s1", plan_no="p1", idempotency_key="k"),
-        lambda c: c.plans.create(
+        lambda c: c.subscriptions.plans.create(
             merchant_plan_no="p1", name="Pro", amount=amount, interval="MONTH",
             interval_count=1, total_cycles=12, idempotency_key="k",
         ),
