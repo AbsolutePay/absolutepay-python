@@ -46,21 +46,23 @@
           }
         }
       },
-      "Problem": {
+      "Error": {
         "type": "object",
         "required": [
-          "code",
-          "title"
+          "code"
         ],
         "properties": {
           "code": {
-            "type": "string"
+            "type": "string",
+            "description": "stable, machine-readable error code"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "short human-readable summary"
           },
           "detail": {
-            "type": "string"
+            "type": "string",
+            "description": "context for this specific occurrence"
           }
         }
       },
@@ -83,65 +85,6 @@
           "locked": {
             "type": "string",
             "example": "0"
-          }
-        }
-      },
-      "BalanceLine": {
-        "type": "object",
-        "required": [
-          "currency",
-          "available",
-          "value",
-          "rate",
-          "priced"
-        ],
-        "properties": {
-          "currency": {
-            "type": "string",
-            "example": "ETH"
-          },
-          "available": {
-            "type": "string",
-            "example": "1.250000"
-          },
-          "value": {
-            "type": "string",
-            "description": "available converted to the quote currency",
-            "example": "4012.50"
-          },
-          "rate": {
-            "type": "string",
-            "description": "quote units per 1 currency",
-            "example": "3210.00"
-          },
-          "priced": {
-            "type": "boolean",
-            "description": "false when no convert quote was available"
-          }
-        }
-      },
-      "BalanceSummary": {
-        "type": "object",
-        "required": [
-          "quote",
-          "total",
-          "lines"
-        ],
-        "properties": {
-          "quote": {
-            "type": "string",
-            "example": "USDT"
-          },
-          "total": {
-            "type": "string",
-            "description": "sum of priced line values, in the quote currency",
-            "example": "5012.50"
-          },
-          "lines": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BalanceLine"
-            }
           }
         }
       },
@@ -251,6 +194,53 @@
               "USDT",
               "USDC"
             ]
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "when this address was first created, unix ms (present on list/detail reads)"
+          }
+        }
+      },
+      "Deposit": {
+        "type": "object",
+        "required": [
+          "transactionId",
+          "chain",
+          "currency",
+          "amount",
+          "status"
+        ],
+        "properties": {
+          "transactionId": {
+            "type": "string",
+            "description": "provider transaction id (stable dedupe key)"
+          },
+          "chain": {
+            "type": "string",
+            "example": "TRX"
+          },
+          "currency": {
+            "type": "string",
+            "example": "USDT"
+          },
+          "amount": {
+            "type": "string",
+            "description": "amount credited, in the coin's units"
+          },
+          "status": {
+            "type": "string",
+            "example": "PAID",
+            "description": "settlement status"
+          },
+          "txHash": {
+            "type": "string",
+            "description": "on-chain transaction hash, when available"
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "settlement time, unix ms"
           }
         }
       },
@@ -1084,69 +1074,30 @@
           }
         }
       },
-      "InvoicePublic": {
+      "InvoiceUpdate": {
         "type": "object",
-        "required": [
-          "token",
-          "merchantName",
-          "reference",
-          "amount",
-          "status",
-          "paused"
-        ],
-        "description": "The unauthenticated hosted-checkout view — deliberately omits owner-only fields (customerEmail, opens, timestamps).",
+        "description": "PATCH body for a checkout/invoice — every field optional. Omit a field to leave it unchanged; send `null` to clear it (redirectUrl/expiresAt/description).",
         "properties": {
-          "token": {
-            "type": "string"
-          },
-          "merchantName": {
-            "type": "string"
-          },
-          "appName": {
-            "type": "string",
-            "description": "the app that created this checkout (shown on the page) — set only when created via an app's API"
-          },
-          "reference": {
-            "type": "string"
-          },
-          "amount": {
-            "$ref": "#/components/schemas/Money"
-          },
-          "description": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "OPEN",
-              "PAID",
-              "EXPIRED",
-              "VOID"
-            ]
-          },
           "paused": {
-            "type": "boolean"
-          },
-          "txId": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "type": "integer",
-            "format": "int64",
-            "description": "optional link expiry (epoch ms)"
+            "type": "boolean",
+            "description": "Live/Paused — a paused link won't accept payment"
           },
           "redirectUrl": {
             "type": "string",
             "format": "uri",
-            "description": "merchant return URL — the page redirects here on a terminal state with ?token=&status="
+            "nullable": true,
+            "description": "http(s) merchant return URL, or null to clear"
           },
-          "activeDeposit": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/DepositOrder"
-              }
-            ],
-            "description": "un-expired deposit to resume on reload"
+          "expiresAt": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "link expiry (epoch ms), or null to clear"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "description": "free-text description, or null to clear"
           }
         }
       },
@@ -1168,102 +1119,6 @@
             "nullable": true,
             "example": "eyJpZCI6IjAxSlgwUTdBQiIsInRzIjoxNzE5NzkyMDAwMDAwfQ",
             "description": "Response-only opaque keyset cursor — you don't set it. To fetch the next page, pass this value back as the `before` query param. `null` means this was the last page."
-          }
-        }
-      },
-      "CheckoutStats": {
-        "type": "object",
-        "required": [
-          "activeLinks",
-          "opens",
-          "conversions",
-          "conversionRate",
-          "volume"
-        ],
-        "properties": {
-          "activeLinks": {
-            "type": "integer"
-          },
-          "opens": {
-            "type": "integer"
-          },
-          "conversions": {
-            "type": "integer"
-          },
-          "conversionRate": {
-            "type": "number",
-            "description": "paid / opened, 0..1"
-          },
-          "volume": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "currency",
-                "amount"
-              ],
-              "properties": {
-                "currency": {
-                  "type": "string"
-                },
-                "amount": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      },
-      "AssetChain": {
-        "type": "object",
-        "required": [
-          "currency",
-          "chain",
-          "fullCurrType",
-          "label"
-        ],
-        "properties": {
-          "currency": {
-            "type": "string",
-            "description": "token the payer sends; the picker spans the full catalog"
-          },
-          "chain": {
-            "type": "string"
-          },
-          "fullCurrType": {
-            "type": "string"
-          },
-          "label": {
-            "type": "string"
-          }
-        }
-      },
-      "PayQuote": {
-        "type": "object",
-        "required": [
-          "payCurrency",
-          "payAmount",
-          "rate",
-          "quoteId",
-          "invoiceAmount"
-        ],
-        "properties": {
-          "payCurrency": {
-            "type": "string"
-          },
-          "payAmount": {
-            "type": "string",
-            "description": "amount of payCurrency to send so it equals the invoice total"
-          },
-          "rate": {
-            "type": "string",
-            "description": "1 when paying the invoice currency; else the conversion rate"
-          },
-          "quoteId": {
-            "type": "string"
-          },
-          "invoiceAmount": {
-            "$ref": "#/components/schemas/Money"
           }
         }
       },
@@ -1759,23 +1614,6 @@
             "type": "string"
           }
         }
-      },
-      "LedgerPage": {
-        "type": "object",
-        "required": [
-          "entries"
-        ],
-        "properties": {
-          "entries": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/LedgerEntry"
-            }
-          },
-          "total": {
-            "type": "integer"
-          }
-        }
       }
     },
     "parameters": {
@@ -1800,6 +1638,20 @@
         },
         "description": "Opaque keyset cursor for paging. Omit for the first page; to fetch the next page, pass the previous response's `nextCursor` here. Don't construct or parse it."
       },
+      "PageOrder": {
+        "name": "order",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ],
+          "default": "desc"
+        },
+        "description": "sort by creation time — desc (newest first, default) or asc (oldest first). Keyset-stable in both directions."
+      },
       "SearchQuery": {
         "name": "q",
         "in": "query",
@@ -1810,6 +1662,15 @@
           "maxLength": 100
         },
         "description": "case-insensitive substring search over the list's reference/identifier columns"
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "opaque client-chosen key; retrying with the same key + body replays the original response, a different body returns 409"
       }
     },
     "responses": {
@@ -1818,7 +1679,7 @@
         "content": {
           "application/json": {
             "schema": {
-              "$ref": "#/components/schemas/Problem"
+              "$ref": "#/components/schemas/Error"
             }
           }
         }
@@ -1828,7 +1689,7 @@
         "content": {
           "application/json": {
             "schema": {
-              "$ref": "#/components/schemas/Problem"
+              "$ref": "#/components/schemas/Error"
             }
           }
         }
@@ -1838,7 +1699,17 @@
         "content": {
           "application/json": {
             "schema": {
-              "$ref": "#/components/schemas/Problem"
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "idempotency/uniqueness conflict — the key was reused with a different payload, or the resource already exists",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
             }
           }
         }
@@ -1849,51 +1720,32 @@
     "/v1/balances": {
       "get": {
         "operationId": "getBalances",
-        "summary": "Account balances",
-        "description": "Returns every asset your workspace holds. Each line has an `available` amount (spendable now, e.g. for payouts) and a `locked` amount (reserved against in-flight operations, released when they settle). Read-only; needs the `balances:read` scope.",
+        "summary": "List balances",
+        "description": "Return every asset your workspace currently holds, one line per currency. Each line carries an `available` amount (spendable right now — for payouts, conversions, gift cards, or off-ramp) and a `locked` amount (reserved against in-flight operations and released when they settle). Balances are tracked per coin regardless of network: a deposit on any supported chain credits the same currency line. This read-only `GET` is also the easiest first call to confirm your API key and request signing are wired correctly. Needs the `balances:read` scope; returns `401` if the key lacks it.",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Balance"
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Balance"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Always `null` — this list is returned in full (no pagination)."
+                    }
                   }
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/v1/balances/summary": {
-      "get": {
-        "operationId": "getBalanceSummary",
-        "summary": "Combined balance in one quote currency",
-        "description": "Values your entire balance in a single `quote` currency (default USDT): a combined `total` plus a per-asset breakdown with each asset's converted `value` and the `rate` used. Ideal for a one-number treasury view across mixed assets.",
-        "parameters": [
-          {
-            "name": "quote",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "default": "USDT"
-            },
-            "description": "quote currency for the combined total"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BalanceSummary"
                 }
               }
             }
@@ -1907,8 +1759,8 @@
     "/v1/reconciliation/payments": {
       "get": {
         "operationId": "listReconciliationPayments",
-        "summary": "Settled collections by time range",
-        "description": "The settled record of your pay-ins, straight from the ledger — the source of truth for accounting. Filter by time range (`from`/`to`, epoch ms) and page with `limit`/`offset`. Reconcile each row against your own order by its `merchantTradeNo`. Needs `ledger:read`.",
+        "summary": "List settled collections",
+        "description": "The settled record of your pay-ins, read straight from the ledger — the source of truth for accounting and reconciliation. Filter by time range with `from`/`to` (epoch milliseconds) and page with `limit` plus the opaque `before` cursor (stop when the response `nextCursor` is `null`); use `order` to sort by settlement time — `desc` (newest first, default) or `asc`. Each `items` row is a settled collection you match against your own order by its `merchantTradeNo`, alongside the `status`, `amount`, `currency`, and `paidAt`; the response also carries a `total` count for the filtered range. Read-only; needs the `ledger:read` scope. Use this for offline bookkeeping; `GET /v1/deposits` covers coins received on your permanent deposit addresses.",
         "parameters": [
           {
             "name": "from",
@@ -1927,21 +1779,13 @@
             }
           },
           {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 500
-            }
+            "$ref": "#/components/parameters/PageLimit"
           },
           {
-            "name": "offset",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/PageOrder"
           }
         ],
         "responses": {
@@ -1952,17 +1796,24 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "orders"
+                    "items",
+                    "nextCursor"
                   ],
                   "properties": {
-                    "orders": {
+                    "items": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/PayOrderRecord"
                       }
                     },
                     "total": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "true count for the filtered range (independent of the page)"
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Response-only opaque cursor — pass it back as `before` to fetch the next page; `null` on the last page."
                     }
                   }
                 }
@@ -1978,8 +1829,8 @@
     "/v1/reconciliation/withdrawals": {
       "get": {
         "operationId": "listReconciliationWithdrawals",
-        "summary": "Payout suborders by time range",
-        "description": "The settled record of your payouts. Filter by time range and page with `limit`/`offset`; match each suborder on `merchantBatchNo`, its suborder id, and the on-chain `txId`. Needs `ledger:read`.",
+        "summary": "List settled payouts",
+        "description": "The settled record of your outbound payouts, one row per suborder. Filter by time range with `from`/`to` (epoch milliseconds) and page with `limit` plus the opaque `before` cursor (stop when the response `nextCursor` is `null`); use `order` to sort by settlement time — `desc` (newest first, default) or `asc`. Reconcile each `items` row against your batch by `merchantBatchNo`, its `suborderId`, and the on-chain `txId`, alongside the `chain`, `amount`, and `status`; a `total` count for the range is included. Read-only; needs the `ledger:read` scope.",
         "parameters": [
           {
             "name": "from",
@@ -1998,21 +1849,13 @@
             }
           },
           {
-            "name": "limit",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 500
-            }
+            "$ref": "#/components/parameters/PageLimit"
           },
           {
-            "name": "offset",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/PageOrder"
           }
         ],
         "responses": {
@@ -2023,17 +1866,24 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "suborders"
+                    "items",
+                    "nextCursor"
                   ],
                   "properties": {
-                    "suborders": {
+                    "items": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/WithdrawSuborderRecord"
                       }
                     },
                     "total": {
-                      "type": "integer"
+                      "type": "integer",
+                      "description": "true count for the filtered range (independent of the page)"
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Response-only opaque cursor — pass it back as `before` to fetch the next page; `null` on the last page."
                     }
                   }
                 }
@@ -2049,8 +1899,8 @@
     "/v1/fees/preview": {
       "get": {
         "operationId": "previewFee",
-        "summary": "Preview the fee on an order before transacting",
-        "description": "The total fee on a given amount, before you transact.",
+        "summary": "Preview a fee",
+        "description": "Compute the total fee on a hypothetical amount before you transact, so you can show costs or net proceeds up front. Required query params are `amount` and `currency`; optionally pass `paymentType` (one of `CHECKOUT`, `WITHDRAWAL`, `SUBSCRIPTION`, `CONVERSION`, `OFFRAMP`, `GIFTCARD`) to price a specific flow. The response returns the total `fee`, the `net` (amount minus fee), and the two portions that make it up — your account-tier fee and the `networkFee`. This is a read-only estimate; it neither creates nor reserves anything. Needs the `balances:read` scope; returns `400` on an invalid amount or currency.",
         "parameters": [
           {
             "name": "amount",
@@ -2116,8 +1966,13 @@
     "/v1/refunds": {
       "post": {
         "operationId": "createRefund",
-        "summary": "Refund a settled order (full or partial)",
-        "description": "Refund a (portion of a) settled checkout order. Confirmation arrives async via the `charge.refunded` webhook, which reverses the accrued fees. Idempotent on refundRequestId.",
+        "summary": "Refund a settled order",
+        "description": "Refund all or part of a settled checkout/invoice order. The body takes the original order's `merchantTradeNo`, the `amount` to refund as a `{amount, currency}` object, an optional `reason`, and an optional `refundRequestId` that doubles as the idempotency key — it is auto-generated if omitted, so send your own to make retries safe. Responds `201` with the refund's `refundRequestId`, `amount`, and a `status` that starts at `PENDING`. Settlement is asynchronous: the `charge.refunded` webhook confirms the outcome (`REFUND_SUCCESS` or `REFUND_REJECTED`) and reverses the fees originally accrued — treat that webhook as the source of truth and process it idempotently. Send an `Idempotency-Key` header to make retries safe — the same key + body replays the original response, a different body returns `409`. Needs the `payments:write` scope; returns `400` if the amount exceeds the refundable remainder.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2144,6 +1999,85 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listRefunds",
+        "summary": "List refunds",
+        "description": "The settled record of your refunds, read straight from the funds ledger — every refund that has actually moved money back to a customer, one row per settlement. Filter by time range with `from`/`to` (epoch milliseconds), narrow to a single asset with `currency`, and page with `limit` plus the opaque `before` cursor (stop when the response `nextCursor` is `null`); use `order` to sort by settlement time — `desc` (newest first, default) or `asc`. A refund you just created with `POST /v1/refunds` is still `PENDING` and will NOT appear here until it settles — poll `GET /v1/refunds/{id}` or watch the `charge.refunded` webhook for in-flight status; this list is strictly the money that has already moved. Each `items` row is a ledger entry with a `recordId`, `ts` (epoch ms), `currency`, signed `change` (a refund is a debit, so negative), `type` (always `REFUND`), and the originating `ref`; the response also carries a `total` count for the filtered range. Read-only; needs the `ledger:read` scope.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/PageOrder"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LedgerEntry"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "true count for the filtered range (independent of the page)"
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Response-only opaque cursor — pass it back as `before` to fetch the next page; `null` on the last page."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -2151,8 +2085,8 @@
     "/v1/refunds/{id}": {
       "get": {
         "operationId": "getRefund",
-        "summary": "Refund status",
-        "description": "Fetch a refund by id and track it from `PENDING` to `REFUND_SUCCESS` (or `REFUND_REJECTED`). The `charge.refunded` webhook fires on success — treat that as the source of truth and process it idempotently on the refund id.",
+        "summary": "Get a refund",
+        "description": "Fetch a single refund by its id (the `refundRequestId` returned on create) and track it from `PENDING` to a terminal `REFUND_SUCCESS` or `REFUND_REJECTED`. The response echoes the `merchantTradeNo`, `refundRequestId`, `amount`, `currency`, and current `status`. Prefer the `charge.refunded` webhook as your primary signal and process it idempotently; use this poll as a fallback when a webhook is missed. Read-only, but needs the `payments:write` scope (same guard as creating a refund); returns `404` for an unknown id.",
         "parameters": [
           {
             "name": "id",
@@ -2184,16 +2118,11 @@
     "/v1/payouts": {
       "post": {
         "operationId": "createPayout",
-        "summary": "Batch payout (idempotent via Idempotency-Key)",
-        "description": "Send a batch of one or more payouts from your `available` balance to external addresses; each recipient becomes a suborder you track independently. Accepted synchronously (`202`) and settled asynchronously — watch the `payout.settled` / `payout.partial` / `payout.failed` webhooks. Always send a unique `Idempotency-Key` so a retried request never pays twice. Needs `payouts:write`.",
+        "summary": "Create a payout",
+        "description": "Send a batch of one or more payouts from your `available` balance to external addresses. The body is `items`, an array of at least one `{recipientAddress, chain, amount, memo?}` entry; each recipient becomes a suborder you track independently. The request is accepted synchronously (`202`) returning a `merchantBatchNo` and per-suborder statuses, then settles asynchronously — watch the `payout.settled` / `payout.partial` / `payout.failed` webhooks, and note `deliveredAmount` on a `PARTIAL` result. Always send a unique `Idempotency-Key` header so a retried request never pays twice: the same key + body replays the original response, a different body returns `409`. Call `GET /v1/payouts/options` first to validate the chain and surface fees/limits. Needs the `payouts:write` scope; returns `400` on an unsupported chain or insufficient balance.",
         "parameters": [
           {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
+            "$ref": "#/components/parameters/IdempotencyKey"
           }
         ],
         "requestBody": {
@@ -2222,6 +2151,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           }
         }
       }
@@ -2229,8 +2161,8 @@
     "/v1/payouts/options": {
       "get": {
         "operationId": "listWithdrawOptions",
-        "summary": "Supported chains + withdraw fee/limits for a currency",
-        "description": "List the chains available for a currency, each with its withdraw fee and min/max amounts. Call this before creating a payout to validate the recipient's chain and show accurate costs.",
+        "summary": "List payout options",
+        "description": "List the chains available to pay out a given `currency` (required query param), each returned with its `withdrawFee`, `minWithdraw`/`maxWithdraw` limits, `minConfirm`, and a human-readable network `label`. Call this before `POST /v1/payouts` to validate the recipient's chain, surface accurate costs, and enforce min/max amounts in your UI. Read-only; needs the `payouts:read` scope.",
         "parameters": [
           {
             "name": "currency",
@@ -2249,14 +2181,20 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "options"
+                    "items",
+                    "nextCursor"
                   ],
                   "properties": {
-                    "options": {
+                    "items": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/WithdrawOption"
                       }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Always `null` — this list is returned in full (no pagination)."
                     }
                   }
                 }
@@ -2272,8 +2210,8 @@
     "/v1/payouts/{id}": {
       "get": {
         "operationId": "getPayout",
-        "summary": "Payout status",
-        "description": "Fetch a payout batch by `merchantBatchNo`, including each suborder's status — to reconcile a batch that settled partially, or to poll when a webhook is missed.",
+        "summary": "Get a payout",
+        "description": "Fetch a payout batch by its `merchantBatchNo` (the path `id`), including every suborder with its `recipientAddress`, `chain`, `amount`, `status`, `txid`, `deliveredAmount`, and `fee`. Use it to reconcile a batch that settled partially (`PARTIAL`) or to poll when a `payout.*` webhook is missed. Read-only; needs the `payouts:read` scope; returns `404` for an unknown batch.",
         "parameters": [
           {
             "name": "id",
@@ -2307,8 +2245,8 @@
     "/v1/deposits/chains": {
       "get": {
         "operationId": "listDepositChains",
-        "summary": "Networks a coin can be deposited on",
-        "description": "The networks available to receive funds, each with the coins it accepts. A balance is one number per coin — a deposit on any network credits the same coin balance, so the network is just the rail the sender uses. Use this to build the deposit network selector.",
+        "summary": "List deposit networks",
+        "description": "List the networks available to receive funds into your own balance, each `items` entry carrying its `chain` code, a display `label`, and the `currencies` (coins) it accepts. A balance is one number per coin, so a deposit on any network credits the same coin balance — the network is just the rail the sender uses. Use this to build the network selector before calling `POST /v1/deposits/address`. Read-only; needs the `balances:read` scope.",
         "responses": {
           "200": {
             "description": "OK",
@@ -2317,14 +2255,20 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "chains"
+                    "items",
+                    "nextCursor"
                   ],
                   "properties": {
-                    "chains": {
+                    "items": {
                       "type": "array",
                       "items": {
                         "$ref": "#/components/schemas/DepositChain"
                       }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Always `null` — this list is returned in full (no pagination)."
                     }
                   }
                 }
@@ -2340,8 +2284,8 @@
     "/v1/deposits/address": {
       "post": {
         "operationId": "createDepositAddress",
-        "summary": "Get a permanent deposit address for a network",
-        "description": "Return your reusable deposit address for the chosen network, creating it on first use. The address is permanent — it never expires, so reuse it for every deposit. Funds received credit your balance for the coin that was sent.",
+        "summary": "Create a deposit address",
+        "description": "Return your reusable deposit address for the chosen network, minting it on first use and returning the same address on every later call (idempotent). The body takes `chain` (a network code from `GET /v1/deposits/chains`). The response is the `address`, the `chain`, the `currencies` it accepts, and a `memo` — on memo networks the memo is required, and sending without it can lose funds. The address is permanent and never expires, so store it and reuse it for every deposit; incoming funds credit your balance for whichever coin was sent. Needs the `balances:read` scope; returns `400` for an unsupported chain.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2372,11 +2316,183 @@
         }
       }
     },
+    "/v1/deposits": {
+      "get": {
+        "operationId": "listDeposits",
+        "summary": "List deposits",
+        "description": "List settled deposits received on your permanent deposit addresses (the ones from `POST /v1/deposits/address`) over a time window. Optional `chain` narrows to one network code; `from`/`to` are unix-millisecond bounds and default to the last 30 days. Each `items` entry carries its `transactionId`, `chain`, `currency`, `amount`, settlement `status` (e.g. `PAID`), the on-chain `txHash`, and `createdAt` (unix ms). Page with the opaque `before` cursor (start with none; pass back the response `nextCursor` until it is `null`) and use `order` to sort by receipt time — `desc` (newest first, default) or `asc`. Read-only; needs the `balances:read` scope.",
+        "parameters": [
+          {
+            "name": "chain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "narrow to one network code (from GET /v1/deposits/chains)"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "window start, unix ms (default: now - 30 days)"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "description": "window end, unix ms (default: now)"
+          },
+          {
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/PageOrder"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Deposit"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Response-only opaque cursor — pass it back as `before` to fetch the next page; `null` on the last page."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/deposits/addresses": {
+      "get": {
+        "operationId": "listDepositAddresses",
+        "summary": "List deposit addresses",
+        "description": "List the reusable deposit addresses you've created (via `POST /v1/deposits/address`), one per network. Use this to render your stored receive addresses without re-minting each one. Optional `chain` narrows to a single network code (from `GET /v1/deposits/chains`). Each item carries its `chain`, the permanent `address`, the `currencies` (coins) that network accepts, an optional `memo` (destination tag, required to receive on memo networks), and `createdAt` (unix ms, when you first created it). Results are keyset-ordered by creation time; page with `limit` and the opaque `before` cursor, stopping when the response `nextCursor` is `null`. Use `order` to sort — `desc` (newest first, default) or `asc` (oldest first). Read-only; needs the `balances:read` scope.",
+        "parameters": [
+          {
+            "name": "chain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "narrow to one network code (from GET /v1/deposits/chains)"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/PageOrder"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DepositAddress"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "example": "eyJpZCI6IjAxSlgwUTdBQiIsInRzIjoxNzE5NzkyMDAwMDAwfQ",
+                      "description": "Response-only opaque keyset cursor — you don't set it. To fetch the next page, pass this value back as the `before` query param. `null` means this was the last page."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/deposits/addresses/{chain}": {
+      "get": {
+        "operationId": "getDepositAddress",
+        "summary": "Get a deposit address",
+        "description": "Fetch one reusable deposit address by its network code (`chain`, from `GET /v1/deposits/chains`). Returns the permanent `address`, the `chain`, the `currencies` (coins) that network accepts, an optional `memo` (destination tag, required to receive on memo networks), and `createdAt` (unix ms). This reads your stored address without re-minting, so it's the cheap way to resolve a single network's address for a receive screen. Returns `404` when you haven't created an address for that network yet — call `POST /v1/deposits/address` first. Read-only; needs the `balances:read` scope.",
+        "parameters": [
+          {
+            "name": "chain",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "network code (from GET /v1/deposits/chains)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepositAddress"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
     "/v1/conversions/quote": {
       "post": {
         "operationId": "previewConversion",
-        "summary": "Convert quote",
-        "description": "Quote a conversion between two assets: provide `sellCurrency`, `buyCurrency`, and exactly one of `sellAmount` / `buyAmount`. Returns a `quoteId`, the `rate`, and the resulting amounts. Quotes are short-lived — request a fresh one if it expires. Needs `convert:write`.",
+        "summary": "Preview a conversion",
+        "description": "Quote a conversion between two assets in your balance without executing it. Provide `sellCurrency`, `buyCurrency`, and exactly one of `sellAmount` / `buyAmount` (the other side is computed). The response returns a `quoteId`, the `rate`, and both resulting amounts (`sellAmount`/`buyAmount`). Quotes are short-lived — pass the `quoteId` to `POST /v1/conversions` promptly, and re-quote if it expires. Needs the `convert:write` scope; returns `400` if both or neither amount is supplied.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2410,8 +2526,13 @@
     "/v1/conversions": {
       "post": {
         "operationId": "executeConversion",
-        "summary": "Execute convert",
-        "description": "Execute a previously quoted conversion by its `quoteId`, moving the balance from the sell asset into the buy asset. Re-quote first if the quote has expired. Needs `convert:write`.",
+        "summary": "Execute a conversion",
+        "description": "Execute a conversion previously quoted by `POST /v1/conversions/quote`, moving balance from the sell asset into the buy asset. The body takes the `quoteId` plus the `sell` and `buy` Money objects echoed from the quote. Responds `201` with an `orderId`, a `status` (`SUCCESS`, `PENDING`, or `FAILED`), and the final `sell`/`buy` amounts. Re-quote first if the quote has expired. Send an `Idempotency-Key` header to make retries safe — the same key + body replays the original response, a different body returns `409`. Needs the `convert:write` scope; returns `400` for an expired or unknown quote.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2438,6 +2559,85 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listConversions",
+        "summary": "Conversions history",
+        "description": "The settled record of your conversions, read straight from the funds ledger — every asset swap that has actually settled, so you can reconcile realized conversions against your own books. Filter by time range with `from`/`to` (epoch milliseconds), narrow to a single asset with `currency`, and page with `limit` plus the opaque `before` cursor (stop when the response `nextCursor` is `null`); use `order` to sort by settlement time — `desc` (newest first, default) or `asc`. A conversion is recorded only once it settles: a swap still in `PENDING` from `POST /v1/conversions` will NOT appear here yet. Each `items` row is a ledger entry with a `recordId`, `ts` (epoch ms), `currency`, signed `change` (the sell leg debits, the buy leg credits), `type` (always `CONVERT`), and the originating order `ref`; the response also carries a `total` count for the filtered range. Read-only; needs the `ledger:read` scope.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "currency",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/PageOrder"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/LedgerEntry"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "true count for the filtered range (independent of the page)"
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Response-only opaque cursor — pass it back as `before` to fetch the next page; `null` on the last page."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -2445,8 +2645,13 @@
     "/v1/subscription-plans": {
       "post": {
         "operationId": "createSubscriptionPlan",
-        "summary": "Define a reusable subscription plan",
-        "description": "Define a recurring billing plan (`amount`, `interval`, `intervalCount`, `totalCycles`) that customers subscribe to. Returns the plan's number; reuse one plan across many subscriptions. Needs `subscriptions:write`.",
+        "summary": "Create a plan",
+        "description": "Define a reusable recurring billing plan that customers can subscribe to. The body requires `merchantPlanNo` (your reference and idempotency key), `name`, `amount`, `interval` (`DAY`, `WEEK`, `MONTH`, or `YEAR`), `intervalCount`, and `totalCycles`. Responds `201` with the created plan including its `planNo` — pass that as `planNo` when subscribing a customer. One plan can back many subscriptions, so create it once and reuse it. Send an `Idempotency-Key` header to make retries safe — the same key + body replays the original response, a different body returns `409`. Needs the `subscriptions:write` scope; returns `400` on invalid interval or amount.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2473,22 +2678,39 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           }
         }
       },
       "get": {
         "operationId": "listSubscriptionPlans",
-        "summary": "List the workspace's plans",
-        "description": "List your subscription plans. Needs `subscriptions:read`.",
+        "summary": "List plans",
+        "description": "List every subscription plan you have defined, each with its `merchantPlanNo`, `planNo`, `name`, `amount`, `interval`/`intervalCount`, and `totalCycles`. Use it to populate a plan picker or to look up the `planNo` you need when creating a subscription. Read-only; needs the `subscriptions:read` scope.",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SubscriptionPlan"
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SubscriptionPlan"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Always `null` — this list is returned in full (no pagination)."
+                    }
                   }
                 }
               }
@@ -2503,8 +2725,13 @@
     "/v1/subscriptions": {
       "post": {
         "operationId": "createSubscription",
-        "summary": "Subscribe one of your customers to a plan (returns the authorization link)",
-        "description": "Subscribe a customer to a plan. Returns a hosted URL where the customer authorizes recurring charges; once authorized the subscription becomes active and bills each cycle, firing a `payment.succeeded` webhook per successful deduction. Needs `subscriptions:write`.",
+        "summary": "Create a subscription",
+        "description": "Subscribe one of your customers to an existing plan. The body takes `merchantSubNo` (your reference and idempotency key), the `planNo` of the plan to bill, and an optional `callbackUrl`. Responds `201` with the subscription's `subId`, a `status` that starts at `PENDING`, and a `subscribeUrl` — send the customer there to authorize recurring charges. Once authorized the subscription becomes `ACTIVE` and bills each cycle, firing a `payment.succeeded` webhook per successful deduction. Send an `Idempotency-Key` header to make retries safe — the same key + body replays the original response, a different body returns `409`. Needs the `subscriptions:write` scope; returns `400` for an unknown plan.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -2531,19 +2758,25 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           }
         }
       },
       "get": {
         "operationId": "listSubscriptions",
-        "summary": "List the workspace's customer subscriptions (keyset-paginated)",
-        "description": "List your subscriptions and their statuses. Needs `subscriptions:read`.",
+        "summary": "List subscriptions",
+        "description": "List your customer subscriptions and their current state. Narrow with the `status` filter (`PENDING`, `ACTIVE`, `PAST_DUE`, `COMPLETED`, `CANCELLED`, or `BLOCKED`) and search references with `q`. Page with `limit` and the opaque `before` cursor; the response `nextCursor` is `null` on the last page. Use `order` to sort by creation time — `desc` (newest first, default) or `asc` (oldest first). Read-only; needs the `subscriptions:read` scope.",
         "parameters": [
           {
             "$ref": "#/components/parameters/PageLimit"
           },
           {
             "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/PageOrder"
           },
           {
             "$ref": "#/components/parameters/SearchQuery"
@@ -2586,8 +2819,8 @@
     "/v1/subscriptions/{merchantSubNo}/deductions": {
       "get": {
         "operationId": "listDeductions",
-        "summary": "Billing-cycle history for a subscription",
-        "description": "List the charge (deduction) history for a subscription — one entry per billing cycle — to reconcile recurring revenue.",
+        "summary": "List charges",
+        "description": "List the charge history for one subscription (identified by `merchantSubNo` in the path), one entry per billing cycle. Each entry carries the `paymentOrderNo`, `amount`, a `status` (`SUCCESS`, `FAILED`, `BLOCKED`, or `PENDING`), and the timestamp `ts`. Use it to reconcile recurring revenue or to spot failed cycles. Read-only; needs the `subscriptions:read` scope.",
         "parameters": [
           {
             "name": "merchantSubNo",
@@ -2604,9 +2837,23 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DeductionOrder"
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DeductionOrder"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Always `null` — this list is returned in full (no pagination)."
+                    }
                   }
                 }
               }
@@ -2622,7 +2869,7 @@
       "post": {
         "operationId": "cancelSubscription",
         "summary": "Cancel a subscription",
-        "description": "Cancel a subscription so no further cycles are billed. Already-settled charges are unaffected. Needs `subscriptions:write`.",
+        "description": "Cancel a subscription (identified by `merchantSubNo` in the path) so no further cycles are billed. Already-settled charges are unaffected, and the response returns the subscription with its `status` moved to `CANCELLED`. Cancellation is terminal — a cancelled subscription cannot be resumed; create a new one instead. Needs the `subscriptions:write` scope; returns `404` for an unknown `merchantSubNo`.",
         "parameters": [
           {
             "name": "merchantSubNo",
@@ -2656,8 +2903,8 @@
     "/v1/checkouts": {
       "post": {
         "operationId": "createCheckoutLink",
-        "summary": "Create a checkout — returns the hosted /pay page URL (payer picks the asset)",
-        "description": "Create a shareable hosted checkout link where the payer chooses which asset and chain to pay with. Returns a `token` and a `checkoutUrl` to send the customer to. Settles like any pay-in — fulfill on the `payment.succeeded` webhook. Needs `invoices:write`.",
+        "summary": "Create a checkout",
+        "description": "Create a shareable hosted checkout link where the payer picks which asset and chain to pay with on the hosted page — the counterpart to `POST /v1/invoices`, which instead fixes a `chain` and mints the deposit address up front. The body requires `reference` and `amount`, and optionally takes `description`, `customerEmail`, `expiresAt` (epoch ms), and `redirectUrl` (the payer returns there on a terminal state with `?token=&status=`). Responds `201` with a `token` plus a `checkoutUrl` (or relative `payPath`) to send the customer to, and an initial `status` of `OPEN`. It settles like any pay-in — fulfill on the `payment.succeeded` webhook. Checkouts and invoices share one table split by `kind`, so this `token` is a checkout: passing it to the invoice endpoints returns `404`. Needs the `invoices:write` scope; returns `400` on a bad amount.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2686,13 +2933,175 @@
             "$ref": "#/components/responses/Unauthorized"
           }
         }
+      },
+      "get": {
+        "operationId": "listCheckouts",
+        "summary": "List checkouts",
+        "description": "List your hosted checkout links (the `checkout` kind only — invoices are listed separately via `GET /v1/invoices`). Filter by `status` (`OPEN`, `PAID`, `EXPIRED`, or `VOID`) and search references with `q`. Results are keyset-ordered newest-first by default; page with `limit` and the opaque `before` cursor, and stop when the response `nextCursor` is `null`. Use `order` to sort by creation time — `desc` (newest first, default) or `asc` (oldest first). Each item includes the `token`, `reference`, `amount`, `status`, `opens`, and timestamps. Read-only; needs the `invoices:read` scope.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          },
+          {
+            "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/PageOrder"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "OPEN",
+                "PAID",
+                "EXPIRED",
+                "VOID"
+              ]
+            },
+            "description": "narrow to a settlement state"
+          },
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoicePage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/checkouts/{token}": {
+      "get": {
+        "operationId": "getCheckout",
+        "summary": "Get a checkout",
+        "description": "Fetch a single hosted checkout link by its `token`, returning the full record: `reference`, `amount`, `status`, `paused`, `opens`, `txId`/`paidChain` once paid, any `activeDeposit` to resume, and timestamps. This endpoint is kind-scoped — it resolves only `checkout` tokens and returns `404` if the token is an invoice (use `GET /v1/invoices/{token}` for those) or unknown. Read-only; needs the `invoices:read` scope.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateCheckout",
+        "summary": "Update a checkout",
+        "description": "Update a checkout link's mutable fields only: `paused` (pause/unpause — a paused link won't accept payment), `redirectUrl`, `expiresAt`, and `description`. Omit a field to leave it unchanged; send `null` on `redirectUrl`/`expiresAt`/`description` to clear it. The `amount`, `currency`, `kind`, and `status` are immutable and cannot be patched. Returns the updated checkout; kind-scoped, so a non-checkout or unknown `token` returns `404`. Needs the `invoices:write` scope; returns `400` on an invalid field.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Invoice"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteCheckout",
+        "summary": "Void a checkout",
+        "description": "Void a checkout link so it can no longer be paid, returning `{ ok: true }`. Voiding is terminal — the link moves to `VOID` and cannot be reopened; issue a new checkout instead. Kind-scoped, so a non-checkout or unknown `token` returns `404`. Needs the `invoices:write` scope.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "ok"
+                  ],
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
       }
     },
     "/v1/invoices": {
       "post": {
         "operationId": "createInvoice",
-        "summary": "Create an invoice — mints the deposit address up front for `chain`",
-        "description": "Create an invoice for an amount on a specific `chain` (required); the on-chain deposit address is minted up front and the payer sends funds directly to it. For a payer-picks hosted link, use POST /v1/checkouts. Returns a `token` + `address`/`chain`/`amount`. Needs `invoices:write`.",
+        "summary": "Create an invoice",
+        "description": "Create an invoice billed on a specific network: unlike a checkout, `chain` is required and the on-chain deposit `address` is minted up front so the payer sends funds directly to it — no hosted asset picker. The body requires `reference`, `amount`, and `chain`, and optionally takes `description`, `customerEmail`, `expiresAt` (epoch ms), and `redirectUrl`. Responds `201` with the invoice `token`, the minted `address` (plus `memo` on memo chains), `chain`, `currency`, `amount`, and expiry timestamps. For a payer-picks hosted link instead, use `POST /v1/checkouts`. Invoices and checkouts share one table split by `kind`, so this `token` is an invoice and returns `404` from the checkout endpoints. Needs the `invoices:write` scope; returns `400` on a bad amount or unsupported chain.",
         "requestBody": {
           "required": true,
           "content": {
@@ -2724,8 +3133,8 @@
       },
       "get": {
         "operationId": "listInvoices",
-        "summary": "List the workspace's invoices (keyset-paginated)",
-        "description": "List invoices and checkout links, filterable by `kind` (`invoice` / `checkout`) and `status` (`OPEN` / `PAID` / `EXPIRED` / `VOID`). Page with `limit` and the `before` cursor. `status=PAID` is your settled pay-ins. Needs `invoices:read`.",
+        "summary": "List invoices",
+        "description": "List your invoices (the `invoice` kind only — hosted links are listed separately via `GET /v1/checkouts`). Filter by `status` (`OPEN`, `PAID`, `EXPIRED`, or `VOID`) and search references with `q`; `status=PAID` is your settled pay-ins feed. Results are keyset-ordered newest-first by default; page with `limit` and the opaque `before` cursor, stopping when the response `nextCursor` is `null`. Use `order` to sort by creation time — `desc` (newest first, default) or `asc` (oldest first). Read-only; needs the `invoices:read` scope.",
         "parameters": [
           {
             "$ref": "#/components/parameters/PageLimit"
@@ -2734,17 +3143,7 @@
             "$ref": "#/components/parameters/PageBefore"
           },
           {
-            "name": "kind",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "invoice",
-                "checkout"
-              ]
-            },
-            "description": "narrow to one manager"
+            "$ref": "#/components/parameters/PageOrder"
           },
           {
             "name": "status",
@@ -2782,33 +3181,41 @@
         }
       }
     },
-    "/v1/invoices/stats": {
+    "/v1/invoices/{token}": {
       "get": {
-        "operationId": "getCheckoutStats",
-        "summary": "Aggregate Checkout stats (active links, opens, conversion, volume)",
-        "description": "Aggregate counts and totals across your invoices and checkout links — handy for a dashboard summary. Needs `invoices:read`.",
+        "operationId": "getInvoice",
+        "summary": "Get an invoice",
+        "description": "Fetch a single invoice by its `token`, returning the full record: `reference`, `amount`, `status`, `paused`, `txId`/`paidChain` once paid, any `activeDeposit` to resume (same address plus countdown), and timestamps. This endpoint is kind-scoped — it resolves only `invoice` tokens and returns `404` if the token is a checkout (use `GET /v1/checkouts/{token}` for those) or unknown. Read-only; needs the `invoices:read` scope.",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CheckoutStats"
+                  "$ref": "#/components/schemas/Invoice"
                 }
               }
             }
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
-      }
-    },
-    "/v1/invoices/{token}/pause": {
-      "post": {
-        "operationId": "pauseInvoice",
-        "summary": "Live/Paused toggle for a checkout link",
-        "description": "Pause (or unpause) an open invoice or link so it temporarily stops accepting payment, without voiding it. Needs `invoices:write`.",
+      },
+      "patch": {
+        "operationId": "updateInvoice",
+        "summary": "Update an invoice",
+        "description": "Update an invoice's mutable fields only: `paused` (pause/unpause — a paused invoice won't accept payment), `redirectUrl`, `expiresAt`, and `description`. Omit a field to leave it unchanged; send `null` on `redirectUrl`/`expiresAt`/`description` to clear it. The `amount`, `currency`, `chain`, `kind`, and `status` are immutable and cannot be patched. Returns the updated invoice; kind-scoped, so a non-invoice or unknown `token` returns `404`. Needs the `invoices:write` scope; returns `400` on an invalid field.",
         "parameters": [
           {
             "name": "token",
@@ -2824,15 +3231,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "required": [
-                  "paused"
-                ],
-                "properties": {
-                  "paused": {
-                    "type": "boolean"
-                  }
-                }
+                "$ref": "#/components/schemas/InvoiceUpdate"
               }
             }
           }
@@ -2843,34 +3242,23 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "required": [
-                    "ok",
-                    "paused"
-                  ],
-                  "properties": {
-                    "ok": {
-                      "type": "boolean"
-                    },
-                    "paused": {
-                      "type": "boolean"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Invoice"
                 }
               }
             }
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
           }
         }
-      }
-    },
-    "/v1/invoices/{token}/void": {
-      "post": {
-        "operationId": "voidInvoice",
-        "summary": "Void an open invoice",
-        "description": "Void an invoice or link so it can no longer be paid. Terminal — a voided link cannot be reopened. Needs `invoices:write`.",
+      },
+      "delete": {
+        "operationId": "deleteInvoice",
+        "summary": "Void an invoice",
+        "description": "Void an invoice so it can no longer be paid, returning `{ ok: true }`. Voiding is terminal — the invoice moves to `VOID` and cannot be reopened; create a new invoice instead. Kind-scoped, so a non-invoice or unknown `token` returns `404`. Needs the `invoices:write` scope.",
         "parameters": [
           {
             "name": "token",
@@ -2900,93 +3288,6 @@
               }
             }
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/v1/public/invoices/{token}/open": {
-      "post": {
-        "operationId": "trackInvoiceOpen",
-        "summary": "Count a checkout-link view (unauthenticated, best-effort)",
-        "description": "Public: record that the payer opened the hosted invoice page (analytics). Has no effect on payment state.",
-        "security": [],
-        "parameters": [
-          {
-            "name": "token",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          }
-        }
-      }
-    },
-    "/v1/public/invoices/{token}/status": {
-      "get": {
-        "operationId": "getInvoiceStatus",
-        "summary": "Poll the invoice's pay status (unauthenticated)",
-        "description": "Public: poll an invoice/link's pay state. `status` is the settlement state (`OPEN` → `PAID`); `phase` tracks the on-chain step (`awaiting` → `confirming` → `settled`). Use it to drive a live status on your checkout page.",
-        "security": [],
-        "parameters": [
-          {
-            "name": "token",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "status",
-                    "phase"
-                  ],
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "OPEN",
-                        "PAID",
-                        "EXPIRED",
-                        "VOID"
-                      ]
-                    },
-                    "phase": {
-                      "type": "string",
-                      "enum": [
-                        "awaiting",
-                        "confirming",
-                        "settled"
-                      ],
-                      "description": "on-chain step: detected+confirming before settled"
-                    },
-                    "txId": {
-                      "type": "string"
-                    },
-                    "received": {
-                      "type": "string",
-                      "description": "amount seen on-chain while confirming"
-                    }
-                  }
-                }
-              }
-            }
-          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           }
@@ -2996,17 +3297,31 @@
     "/v1/offramp/countries": {
       "get": {
         "operationId": "listOffRampCountries",
-        "summary": "Supported bank countries (OTC off-ramp)",
-        "description": "List the countries supported for off-ramp (converting crypto to fiat paid to a bank account). Needs `payouts:write`.",
+        "summary": "Off-ramp countries",
+        "description": "List the countries supported for off-ramp — converting crypto into fiat paid out to a bank account. Each entry has a numeric `id` and a `name`; pass the `id` as `countryId` when registering a bank. Call this first to populate the country selector in your bank-registration flow. Read-only; needs the `payouts:read` scope.",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Country"
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Country"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Always `null` — this list is returned in full (no pagination)."
+                    }
                   }
                 }
               }
@@ -3021,17 +3336,31 @@
     "/v1/offramp/banks": {
       "get": {
         "operationId": "listOffRampBanks",
-        "summary": "Your registered banks + approval status",
-        "description": "List your registered bank accounts available as off-ramp destinations, with each one's verification status.",
+        "summary": "List bank accounts",
+        "description": "List your registered bank accounts available as off-ramp destinations. Each returns its `bankAccountId`, `bankAccountName`, `bankName`, `countryName`, `iban`, and a `status` (`approved`, `pending`, `materials`, or `rejected`) — a `memo` carries the reason when rejected, and only `approved` accounts can receive a withdrawal. Read-only; needs the `payouts:read` scope.",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Bank"
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Bank"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Always `null` — this list is returned in full (no pagination)."
+                    }
                   }
                 }
               }
@@ -3044,8 +3373,8 @@
       },
       "post": {
         "operationId": "registerOffRampBank",
-        "summary": "Register a bank (statement base64; reviewed asynchronously)",
-        "description": "Register a bank account as an off-ramp destination. Returns a `bankAccountId`; verification documents are submitted separately and reviewed before the account can receive funds. Needs `payouts:write`.",
+        "summary": "Register a bank",
+        "description": "Register a bank account as an off-ramp destination. The body requires `bankAccountName` (must match your verified identity), `bankName`, `countryId` (from `GET /v1/offramp/countries`), `iban`, and a `file` (a base64 bank statement for verification); `swift`, `address`, and `remittanceLineNumber` are optional. Responds `201` with the bank and its initial `status`. The account is reviewed before it can receive funds, and may ask for more documents (`status: materials`) via `POST /v1/offramp/banks/{bankAccountId}/materials`. Needs the `payouts:write` scope; returns `400` on invalid bank details.",
         "requestBody": {
           "required": true,
           "content": {
@@ -3079,8 +3408,8 @@
     "/v1/offramp/banks/{bankAccountId}": {
       "delete": {
         "operationId": "deleteOffRampBank",
-        "summary": "Remove a linked bank account",
-        "description": "Remove a registered off-ramp bank account. Needs `payouts:write`.",
+        "summary": "Remove a bank",
+        "description": "Remove a registered off-ramp bank account by its `bankAccountId` (path param) so it is no longer available as a withdrawal destination. Responds `204` with no body. Needs the `payouts:write` scope; returns `400` for an unknown bank account.",
         "parameters": [
           {
             "name": "bankAccountId",
@@ -3107,8 +3436,8 @@
     "/v1/offramp/banks/{bankAccountId}/materials": {
       "post": {
         "operationId": "submitOffRampBankMaterials",
-        "summary": "Submit supplementary documents for a bank under review",
-        "description": "Upload the verification documents (multipart) for a registered bank account. The account becomes usable once review passes.",
+        "summary": "Submit bank documents",
+        "description": "Upload supplementary verification documents for a bank account that is under review (`status: materials`), identified by `bankAccountId` in the path. The body takes `certificate` (company registration / business license) and `passport` (government-issued ID), each an array of 1–5 base64 files up to 4MB (jpg/png/pdf). Responds `202` with `{ ok: true }`; the account becomes usable once review passes. Needs the `payouts:write` scope; returns `400` on missing or oversized files.",
         "parameters": [
           {
             "name": "bankAccountId",
@@ -3157,8 +3486,8 @@
     "/v1/offramp/quote": {
       "post": {
         "operationId": "offRampQuote",
-        "summary": "SELL quote (crypto → fiat); min 1000 USDT-equivalent",
-        "description": "Quote an off-ramp: provide `cryptoCurrency`, `fiatCurrency`, and `cryptoAmount`. Returns a `quoteToken` with the fiat amount, rate, and fees. Subject to a per-transaction minimum; quotes are short-lived. Needs `payouts:write`.",
+        "summary": "Preview an off-ramp",
+        "description": "Quote a crypto-to-fiat off-ramp before committing. The body requires `cryptoCurrency`, `fiatCurrency`, and `cryptoAmount` (subject to a per-transaction minimum of 1000 USDT-equivalent). The response returns a `quoteToken` plus the resulting `fiatAmount`, `fiatRate`, and a `validPeriod`. Quotes are short-lived — pass the `quoteToken` to `POST /v1/offramp/withdraw` promptly, and re-quote if it expires. Needs the `payouts:write` scope; returns `400` below the minimum or for an unsupported pair.",
         "requestBody": {
           "required": true,
           "content": {
@@ -3192,8 +3521,13 @@
     "/v1/offramp/withdraw": {
       "post": {
         "operationId": "offRampWithdraw",
-        "summary": "Create an off-ramp withdraw order against a quote + approved bank",
-        "description": "Execute an off-ramp withdrawal against a `quoteToken` to a registered `bankAccountId`. Settles asynchronously and reports via the payout webhooks. Needs `payouts:write`.",
+        "summary": "Withdraw to a bank",
+        "description": "Execute an off-ramp withdrawal, cashing out crypto to fiat in an approved bank account. The body takes the `quoteToken` from `POST /v1/offramp/quote`, the destination `bankAccountId` (must be `approved`), and the `cryptoCurrency`/`fiatCurrency`/`cryptoAmount`/`fiatAmount` echoed from the quote. Responds `201` with an `orderId`, `clientOrderId`, and a `status` (`PENDING` → `DISPATCHED` → `SUCCESS`/`FAILED`); it settles asynchronously and reports via the payout webhooks. Send an `Idempotency-Key` header to make retries safe — the same key + body replays the original response, a different body returns `409`. Needs the `payouts:write` scope; returns `400` for an expired quote or a bank that is not yet approved.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3220,6 +3554,9 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           }
         }
       }
@@ -3227,14 +3564,17 @@
     "/v1/offramp/orders": {
       "get": {
         "operationId": "listOffRampOrders",
-        "summary": "Your off-ramp orders (keyset-paginated)",
-        "description": "List your off-ramp withdrawal orders and their statuses, for reconciliation.",
+        "summary": "List off-ramp orders",
+        "description": "List your off-ramp withdrawal orders, for reconciliation. Filter by `status` (`PENDING`, `DISPATCHED`, `SUCCESS`, or `FAILED`) and search with `q`; page with `limit` and the opaque `before` cursor until the response `nextCursor` is `null`. Use `order` to sort by creation time — `desc` (newest first, default) or `asc` (oldest first). Each order carries its `orderId`, `clientOrderId`, crypto/fiat currencies and amounts, `status`, and `createdAt`. Read-only; needs the `payouts:read` scope.",
         "parameters": [
           {
             "$ref": "#/components/parameters/PageLimit"
           },
           {
             "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/PageOrder"
           },
           {
             "$ref": "#/components/parameters/SearchQuery"
@@ -3275,17 +3615,31 @@
     "/v1/giftcards/templates": {
       "get": {
         "operationId": "listGiftTemplates",
-        "summary": "Gift-card cover templates",
-        "description": "List the available gift-card templates (designs) you can issue cards from.",
+        "summary": "List gift-card templates",
+        "description": "List the available gift-card cover designs you can issue cards from. Each template returns an `id` (pass it as `templateId` when issuing a card), a `titleEn`, an `imageUrl`, and a `coverType`. Call this to build a design picker before `POST /v1/giftcards`. Read-only; needs the `balances:read` scope.",
         "responses": {
           "200": {
             "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/GiftTemplate"
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/GiftTemplate"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true,
+                      "description": "Always `null` — this list is returned in full (no pagination)."
+                    }
                   }
                 }
               }
@@ -3300,8 +3654,13 @@
     "/v1/giftcards": {
       "post": {
         "operationId": "createGiftCard",
-        "summary": "Issue a prepaid gift card (funded from the workspace balance)",
-        "description": "Issue a gift card. Requires a `title`, a `templateId` (from the templates list), and an `amount`. Returns the created card's number and details to hand to the recipient.",
+        "summary": "Issue a gift card",
+        "description": "Issue a prepaid gift card funded from your balance. The body requires a `title`, a `templateId` (from `GET /v1/giftcards/templates`), and an `amount`. Responds `201` with the created card: its `cardNum`, the redemption `cardKey` (a secret — store it securely and hand it only to the recipient), `amount`, and a `status` that starts at `PENDING` and moves to `ACTIVE` once funded. Send an `Idempotency-Key` header to make retries safe — the same key + body replays the original response, a different body returns `409`. Needs the `payments:write` scope; returns `400` on a bad template or amount.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -3328,19 +3687,25 @@
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           }
         }
       },
       "get": {
         "operationId": "listGiftCards",
-        "summary": "Your issued gift cards (keyset-paginated)",
-        "description": "List the gift cards you have issued.",
+        "summary": "List gift cards",
+        "description": "List the gift cards you have issued. Filter by `status` (`PENDING`, `ACTIVE`, `REDEEMED`, `FROZEN`, `FAILED`, or `REVIEW`) and search with `q`; page with `limit` and the opaque `before` cursor until the response `nextCursor` is `null`. Use `order` to sort by creation time — `desc` (newest first, default) or `asc` (oldest first). The secret `cardKey` is omitted from list items unless your key is allowed to see it. Read-only; needs the `balances:read` scope.",
         "parameters": [
           {
             "$ref": "#/components/parameters/PageLimit"
           },
           {
             "$ref": "#/components/parameters/PageBefore"
+          },
+          {
+            "$ref": "#/components/parameters/PageOrder"
           },
           {
             "$ref": "#/components/parameters/SearchQuery"
@@ -3383,8 +3748,8 @@
     "/v1/giftcards/{cardNum}": {
       "get": {
         "operationId": "getGiftCard",
-        "summary": "Poll a gift card's status",
-        "description": "Fetch a single issued gift card by its card number.",
+        "summary": "Get a gift card",
+        "description": "Fetch a single issued gift card by its `cardNum` (path param), returning its `title`, `templateId`, `amount`, and current `status` — poll it to watch a card move from `PENDING` to `ACTIVE`. The secret `cardKey` is included only when your key is allowed to see it; otherwise it is omitted. Read-only; needs the `balances:read` scope.",
         "parameters": [
           {
             "name": "cardNum",
@@ -3402,92 +3767,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GiftCard"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
-          }
-        }
-      }
-    },
-    "/v1/transactions": {
-      "get": {
-        "operationId": "listTransactions",
-        "summary": "Unified ledger / reconciliation",
-        "description": "The unified ledger of every movement — pay-ins, payouts, conversions, and fees — in one time-boxed, paginated list. Filter with `from`/`to` (epoch ms) and page with `limit`/`offset`; set `format=csv` for an export. Needs `ledger:read`.",
-        "parameters": [
-          {
-            "name": "currency",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "from",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "to",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "format": "int64"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 1000
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            }
-          },
-          {
-            "name": "format",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": [
-                "json",
-                "csv"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LedgerPage"
-                }
-              },
-              "text/csv": {
-                "schema": {
-                  "type": "string"
                 }
               }
             }

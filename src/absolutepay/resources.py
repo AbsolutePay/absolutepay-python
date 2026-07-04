@@ -1,7 +1,19 @@
 """API resource groups. Each hangs off the client and mirrors the REST surface.
 
 A ``Money`` is a plain dict: ``{"amount": "10.00", "currency": "USDT"}``.
-Methods return the parsed JSON (dict / list); they raise :class:`AbsolutePayError` on non-2xx.
+Methods return the parsed JSON; on non-2xx they raise :class:`AbsolutePayError`.
+
+**List envelope.** Every ``list``-style method takes keyword filters plus ``limit`` /
+``before`` / ``order`` and returns the raw ``{"items": [...], "nextCursor": ...}`` page
+(reconciliation, refunds and conversions histories additionally carry ``total``). Page by
+echoing ``nextCursor`` back as ``before``; ``nextCursor is None`` means the last page.
+
+**Idempotency.** Money POSTs (``payouts.create``, ``refunds.create``,
+``conversions.execute``, ``offramp.withdraw``, ``giftcards.create``,
+``subscriptions.create``, ``plans.create``) accept ``idempotency_key=`` which is sent as the
+``Idempotency-Key`` header (outside the request signature). Replaying the same key returns the
+original result instead of acting twice; a ``409`` surfaces as a normal
+:class:`AbsolutePayError` (inspect ``.code``).
 """
 
 from __future__ import annotations
@@ -16,6 +28,19 @@ if TYPE_CHECKING:
 Money = dict[str, str]
 Json = Any
 
+#: Sentinel distinguishing "field omitted" from "field explicitly set to null (clear it)".
+_UNSET: Any = object()
+
+
+def _idem(idempotency_key: Optional[str]) -> Optional[dict[str, str]]:
+    """Build the ``Idempotency-Key`` header mapping, or ``None`` when no key was given."""
+    return {"Idempotency-Key": idempotency_key} if idempotency_key else None
+
+
+def _patch(**fields: Any) -> dict[str, Any]:
+    """Keep only fields the caller actually passed. ``None`` is kept (sends null → clears)."""
+    return {k: v for k, v in fields.items() if v is not _UNSET}
+
 
 class _Resource:
     def __init__(self, client: "AbsolutePay") -> None:
@@ -29,34 +54,19 @@ class Balances(_Resource):
         """List every asset balance held by the workspace.
 
         Returns:
-            A list of per-asset balance entries (each with the currency and available/held
-            amounts as decimal strings).
+            ``{"items": [...]}`` — one entry per asset (currency plus available/held amounts as
+            decimal strings).
 
         Raises:
             AbsolutePayError: on a non-2xx response (e.g. 401/403 auth, 429 rate limit).
 
         Example:
             ```python
-            for bal in client.balances.list():
+            for bal in client.balances.list()["items"]:
                 print(bal["currency"], bal["available"])
             ```
         """
         return self._c.request("GET", "/v1/balances")
-
-    def summary(self, *, quote: Optional[str] = None) -> Json:
-        """Get the combined balance valued (via FX) into a single quote currency.
-
-        Args:
-            quote: Currency to value the total in (e.g. `"USDT"`, `"USD"`). Optional; defaults
-                to USDT server-side.
-
-        Returns:
-            A dict with the combined valued total and the per-asset breakdown.
-
-        Raises:
-            AbsolutePayError: on a non-2xx response.
-        """
-        return self._c.request("GET", "/v1/balances/summary" + qs({"quote": quote}))
 
 
 class Fees(_Resource):
@@ -86,23 +96,22 @@ class Payouts(_Resource):
     """Send batch crypto payouts (scope: `payouts:write`; reads use `payouts:read`)."""
 
     def create(self, items: Sequence[dict], *, idempotency_key: Optional[str] = None) -> Json:
-        """Submit a batch of crypto payouts in a single request.
+        """Submit a batch of crypto payouts in a single request (money POST).
 
         Args:
             items: The payout line items — a sequence of dicts, one per recipient (each
                 specifying the destination address/chain, currency, and amount as a decimal
                 STRING). Sent as the `items` array.
             idempotency_key: Optional client-chosen key that makes retries safe: replaying the
-                same key returns the ORIGINAL batch instead of paying out again. Strongly
-                recommended for any request you might retry. Sent as the `Idempotency-Key`
-                header (outside the request signature).
+                same key returns the ORIGINAL batch instead of paying out again. Sent as the
+                `Idempotency-Key` header (outside the request signature).
 
         Returns:
             A dict describing the created payout batch (batch id and per-item status).
 
         Raises:
             AbsolutePayError: on a non-2xx response (e.g. 403 missing `payouts:write`,
-                insufficient balance).
+                insufficient balance, or 409 idempotency conflict).
 
         Example:
             ```python
@@ -115,8 +124,7 @@ class Payouts(_Resource):
             )
             ```
         """
-        headers = {"Idempotency-Key": idempotency_key} if idempotency_key else None
-        return self._c.request("POST", "/v1/payouts", {"items": list(items)}, headers)
+        return self._c.request("POST", "/v1/payouts", {"items": list(items)}, _idem(idempotency_key))
 
     def options(self, *, currency: str) -> Json:
         """List the chains a currency can be paid out on, with per-chain fees and limits.
@@ -125,7 +133,7 @@ class Payouts(_Resource):
             currency: The payout currency, e.g. `"USDT"`.
 
         Returns:
-            A dict/list of supported chains and their withdraw fee and min/max limits.
+            ``{"items": [...]}`` — supported chains with their withdraw fee and min/max limits.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
@@ -148,10 +156,17 @@ class Payouts(_Resource):
 
 
 class Refunds(_Resource):
-    """Refund settled pay-in collections (scope: `payments:write`)."""
+    """Refund settled pay-in collections and read refund history (scope: `payments:write`)."""
 
-    def create(self, *, merchant_trade_no: str, amount: Money, reason: Optional[str] = None) -> Json:
-        """Refund all or part of a settled checkout back to the payer.
+    def create(
+        self,
+        *,
+        merchant_trade_no: str,
+        amount: Money,
+        reason: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Json:
+        """Refund all or part of a settled checkout back to the payer (money POST).
 
         Args:
             merchant_trade_no: The trade number of the original settled checkout to refund.
@@ -159,12 +174,13 @@ class Refunds(_Resource):
                 `{"amount": "10.00", "currency": "USDT"}` — decimal STRING, never a float. May
                 be less than the original for a partial refund.
             reason: Optional human-readable reason recorded with the refund.
+            idempotency_key: Optional retry-safety key; sent as the `Idempotency-Key` header.
 
         Returns:
             A dict describing the refund request, including its `refundRequestId` and status.
 
         Raises:
-            AbsolutePayError: on a non-2xx response (e.g. 403, or original not refundable).
+            AbsolutePayError: on a non-2xx response (e.g. 403, original not refundable, or 409).
 
         Example:
             ```python
@@ -172,12 +188,13 @@ class Refunds(_Resource):
                 merchant_trade_no="order-2026-0001",
                 amount={"amount": "25.00", "currency": "USDT"},
                 reason="customer request",
+                idempotency_key="refund-0001",
             )
             print(refund["refundRequestId"])
             ```
         """
         body = clean({"merchantTradeNo": merchant_trade_no, "amount": amount, "reason": reason})
-        return self._c.request("POST", "/v1/refunds", body)
+        return self._c.request("POST", "/v1/refunds", body, _idem(idempotency_key))
 
     def get(self, id: str) -> Json:
         """Look up a refund by its `refundRequestId`.
@@ -192,6 +209,42 @@ class Refunds(_Resource):
             AbsolutePayError: on a non-2xx response (e.g. 404 if unknown).
         """
         return self._c.request("GET", f"/v1/refunds/{path_seg(id)}")
+
+    def list(
+        self,
+        *,
+        from_: Optional[int] = None,
+        to: Optional[int] = None,
+        currency: Optional[str] = None,
+        limit: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
+    ) -> Json:
+        """List the settled REFUND ledger history (keyset-paginated).
+
+        Note: `from_` has a trailing underscore because `from` is a Python keyword; it maps to
+        the `from` query parameter.
+
+        Args:
+            from_: Start of the time window, epoch MILLISECONDS (inclusive). Optional.
+            to: End of the time window, epoch MILLISECONDS. Optional.
+            currency: Filter to a single currency, e.g. `"USDT"`. Optional.
+            limit: Max items per page. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
+
+        Returns:
+            ``{"items": [...], "total": N, "nextCursor": ...}`` (`nextCursor is None` on the
+            last page).
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request(
+            "GET",
+            "/v1/refunds"
+            + qs({"from": from_, "to": to, "currency": currency, "limit": limit, "before": before, "order": order}),
+        )
 
 
 class Conversions(_Resource):
@@ -233,130 +286,66 @@ class Conversions(_Resource):
         )
         return self._c.request("POST", "/v1/conversions/quote", body)
 
-    def execute(self, *, quote_id: str, sell: Money, buy: Money) -> Json:
-        """Execute a conversion against a quote from `quote` (this moves funds).
+    def execute(self, *, quote_id: str, sell: Money, buy: Money, idempotency_key: Optional[str] = None) -> Json:
+        """Execute a conversion against a quote from `quote` (money POST — moves funds).
 
         Args:
             quote_id: The `quoteId` returned by `quote`.
             sell: The sell side as a `Money` dict (from the quote's `sellAmount`/`sellCurrency`).
             buy: The buy side as a `Money` dict (from the quote's `buyAmount`/`buyCurrency`).
+            idempotency_key: Optional retry-safety key; sent as the `Idempotency-Key` header.
 
         Returns:
             A dict describing the executed conversion and resulting balances.
 
         Raises:
-            AbsolutePayError: on a non-2xx response (e.g. expired quote, insufficient balance).
+            AbsolutePayError: on a non-2xx response (e.g. expired quote, insufficient balance, 409).
         """
-        return self._c.request("POST", "/v1/conversions", {"quoteId": quote_id, "sell": sell, "buy": buy})
+        body = {"quoteId": quote_id, "sell": sell, "buy": buy}
+        return self._c.request("POST", "/v1/conversions", body, _idem(idempotency_key))
 
-    def convert(
+    def list(
         self,
         *,
-        sell_currency: str,
-        buy_currency: str,
-        sell_amount: Optional[str] = None,
-        buy_amount: Optional[str] = None,
+        from_: Optional[int] = None,
+        to: Optional[int] = None,
+        currency: Optional[str] = None,
+        limit: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
     ) -> Json:
-        """Quote and execute a conversion in one call (convenience wrapper).
+        """List the settled CONVERT ledger history (keyset-paginated).
 
-        Calls `quote` then immediately `execute` with the returned amounts. Because the rate
-        can move between the two steps, use `quote` + `execute` yourself if you need to show
-        the rate to a user before committing. Specify EXACTLY ONE of `sell_amount` /
-        `buy_amount` (decimal STRINGS).
+        Note: `from_` maps to the `from` query parameter (`from` is a Python keyword).
 
         Args:
-            sell_currency: The currency being sold, e.g. `"USDT"`.
-            buy_currency: The currency being bought, e.g. `"BTC"`.
-            sell_amount: Amount to sell as a decimal string. Provide this OR `buy_amount`.
-            buy_amount: Amount to receive as a decimal string. Provide this OR `sell_amount`.
+            from_: Start of the time window, epoch MILLISECONDS (inclusive). Optional.
+            to: End of the time window, epoch MILLISECONDS. Optional.
+            currency: Filter to a single currency. Optional.
+            limit: Max items per page. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
 
         Returns:
-            A dict describing the executed conversion (same shape as `execute`).
-
-        Raises:
-            AbsolutePayError: on a non-2xx response at either the quote or execute step.
-
-        Example:
-            ```python
-            result = client.conversions.convert(
-                sell_currency="USDT",
-                buy_currency="BTC",
-                sell_amount="100.00",
-            )
-            ```
-        """
-        q = self.quote(
-            sell_currency=sell_currency,
-            buy_currency=buy_currency,
-            sell_amount=sell_amount,
-            buy_amount=buy_amount,
-        )
-        return self.execute(
-            quote_id=q["quoteId"],
-            sell={"amount": q["sellAmount"], "currency": q["sellCurrency"]},
-            buy={"amount": q["buyAmount"], "currency": q["buyCurrency"]},
-        )
-
-
-class _PublicInvoices(_Resource):
-    """Payer-facing, token-keyed public invoice endpoints.
-
-    These are keyed by the invoice's public `token` (not by tenant credentials) and back the
-    hosted `/pay` page. Reachable via `client.invoices.public`. Merchants should share the
-    hosted checkout link rather than build their own payer UI; `status` here is the poll
-    fallback for confirming settlement when you can't rely on the `payment.succeeded` webhook.
-    """
-
-    def status(self, token: str) -> Json:
-        """Poll the current payment status of a public invoice (settlement-confirmation fallback).
-
-        Prefer the `payment.succeeded` webhook to confirm settlement; use this as the poll
-        fallback when a webhook can't be received.
-
-        Args:
-            token: The invoice's public token.
-
-        Returns:
-            A dict with the current status (e.g. open / paid).
+            ``{"items": [...], "total": N, "nextCursor": ...}``.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
-        return self._c.request("GET", f"/v1/public/invoices/{path_seg(token)}/status")
-
-    def track_open(self, token: str) -> Json:
-        """Record that the payer opened the hosted invoice page (analytics beacon).
-
-        A fire-and-forget signal used only for open-rate analytics; it does not change the
-        invoice state and needs no authentication.
-
-        Args:
-            token: The invoice's public token.
-
-        Returns:
-            A dict acknowledging the recorded open (typically empty).
-
-        Raises:
-            AbsolutePayError: on a non-2xx response.
-        """
-        return self._c.request("POST", f"/v1/public/invoices/{path_seg(token)}/open")
+        return self._c.request(
+            "GET",
+            "/v1/conversions"
+            + qs({"from": from_, "to": to, "currency": currency, "limit": limit, "before": before, "order": order}),
+        )
 
 
-class Invoices(_Resource):
-    """Invoices and hosted payment links (scope: `invoices:write`; reads use `invoices:read`).
+class Checkouts(_Resource):
+    """Hosted checkout links — the payer picks the asset on the page (scope: `invoices:write`).
 
-    Writes/reads for your own invoices go through this class; the payer-facing endpoints for a
-    hosted page live under `client.invoices.public` (a `_PublicInvoices`).
+    A checkout does not fix a `chain` up front; the payer chooses their currency/chain on the
+    hosted page. For the up-front address flow (mint the deposit address immediately), use
+    `client.invoices` instead.
     """
-
-    def __init__(self, client: "AbsolutePay") -> None:
-        """Wire up the invoices resource and its public (payer-facing) sub-resource.
-
-        Args:
-            client: The parent `AbsolutePay` client used for requests.
-        """
-        super().__init__(client)
-        self.public = _PublicInvoices(client)
 
     def create(
         self,
@@ -366,89 +355,36 @@ class Invoices(_Resource):
         description: Optional[str] = None,
         customer_email: Optional[str] = None,
         expires_at: Optional[int] = None,
-        chain: Optional[str] = None,
         redirect_url: Optional[str] = None,
     ) -> Json:
-        """Create an invoice for a fixed amount.
-
-        Args:
-            reference: Your unique reference for this invoice (idempotency/lookup handle).
-            amount: The invoice amount as a `Money` dict
-                `{"amount": "10.00", "currency": "USDT"}` — decimal STRING, never a float.
-            description: Optional human-readable description shown to the payer.
-            customer_email: Optional payer email (used for receipts/notifications).
-            expires_at: Optional expiry as epoch MILLISECONDS.
-            chain: Optional chain/network; passing it mints the deposit address up front
-                instead of letting the payer choose an asset later.
-            redirect_url: Optional http(s) URL. When the hosted checkout reaches a terminal
-                state the payer's browser is redirected here with
-                `?token=<invoiceToken>&status=<SUCCESS|EXPIRED|CANCELED>` appended (any
-                existing query is preserved). Echoed back on the invoice as `redirectUrl`.
-
-        Returns:
-            A dict describing the created invoice (its `token`, hosted URL, amount, status,
-            `redirectUrl` if set, and — if `chain` was given — the deposit address).
-
-        Raises:
-            AbsolutePayError: on a non-2xx response.
-
-        Example:
-            ```python
-            invoice = client.invoices.create(
-                reference="inv-1001",
-                amount={"amount": "49.99", "currency": "USDT"},
-                customer_email="buyer@example.com",
-                chain="TRX",
-            )
-            print(invoice["url"])
-            ```
-        """
-        body = clean(
-            {
-                "reference": reference,
-                "amount": amount,
-                "description": description,
-                "customerEmail": customer_email,
-                "expiresAt": expires_at,
-                "chain": chain,
-                "redirectUrl": redirect_url,
-            }
-        )
-        return self._c.request("POST", "/v1/invoices", body)
-
-    def create_checkout(
-        self,
-        *,
-        reference: str,
-        amount: Money,
-        description: Optional[str] = None,
-        customer_email: Optional[str] = None,
-        expires_at: Optional[int] = None,
-        redirect_url: Optional[str] = None,
-    ) -> Json:
-        """Create a hosted checkout link where the payer picks the asset on the page.
-
-        Unlike `create`, no `chain` is fixed up front — the payer chooses their currency/chain
-        on the hosted page.
+        """Create a hosted checkout link.
 
         Args:
             reference: Your unique reference for this checkout link.
             amount: The amount as a `Money` dict
                 `{"amount": "10.00", "currency": "USDT"}` — decimal STRING, never a float.
             description: Optional human-readable description shown to the payer.
-            customer_email: Optional payer email.
+            customer_email: Optional payer email (used for receipts/notifications).
             expires_at: Optional expiry as epoch MILLISECONDS.
             redirect_url: Optional http(s) URL. When the hosted checkout reaches a terminal
                 state the payer's browser is redirected here with
-                `?token=<invoiceToken>&status=<SUCCESS|EXPIRED|CANCELED>` appended (any
-                existing query is preserved). Echoed back on the invoice as `redirectUrl`.
+                `?token=<token>&status=<SUCCESS|EXPIRED|CANCELED>` appended (any existing query
+                is preserved). Echoed back as `redirectUrl`.
 
         Returns:
-            A dict describing the created checkout link (its `token`, hosted URL, and
-            `redirectUrl` if set).
+            A dict with the created checkout link — `token` and `checkoutUrl`.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
+
+        Example:
+            ```python
+            chk = client.checkouts.create(
+                reference="order-2026-0001",
+                amount={"amount": "10.00", "currency": "USDT"},
+            )
+            print(chk["checkoutUrl"])
+            ```
         """
         body = clean(
             {
@@ -465,51 +401,215 @@ class Invoices(_Resource):
     def list(
         self,
         *,
-        limit: Optional[int] = None,
         status: Optional[str] = None,
-        kind: Optional[str] = None,
-        before: Optional[str] = None,
         q: Optional[str] = None,
+        limit: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
     ) -> Json:
-        """List invoices and hosted checkout links (keyset-paginated).
+        """List checkout links (keyset-paginated).
 
         Args:
-            limit: Max items per page. Optional.
-            status: Filter by status (e.g. open / paid / void). Optional.
-            kind: Filter by kind (invoice vs. checkout link). Optional.
-            before: Keyset cursor — pass the previous page's opaque `nextCursor` to fetch the
-                next page. Optional; omit for the first page.
+            status: Filter by status. Optional.
             q: Free-text search over reference/description. Optional.
+            limit: Max items per page. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
 
         Returns:
-            A dict with the page of items and a `nextCursor` (opaque; feed back as `before`;
-            `None`/null on the last page).
+            ``{"items": [...], "nextCursor": ...}`` (`nextCursor is None` on the last page).
 
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
         return self._c.request(
-            "GET",
-            "/v1/invoices" + qs({"limit": limit, "status": status, "kind": kind, "before": before, "q": q}),
+            "GET", "/v1/checkouts" + qs({"status": status, "q": q, "limit": limit, "before": before, "order": order})
         )
 
-    def stats(self) -> Json:
-        """Get aggregate invoice statistics for the workspace.
+    def get(self, token: str) -> Json:
+        """Fetch a checkout link (and its current settlement state) by token.
+
+        This is the poll fallback for confirming settlement when you can't rely on the
+        `payment.succeeded` webhook.
+
+        Args:
+            token: The checkout link's token.
 
         Returns:
-            A dict of summary counts/totals across invoices.
+            A dict with the checkout's details and status.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response (e.g. 404 if unknown).
+        """
+        return self._c.request("GET", f"/v1/checkouts/{path_seg(token)}")
+
+    def update(
+        self,
+        token: str,
+        *,
+        paused: Any = _UNSET,
+        redirect_url: Any = _UNSET,
+        expires_at: Any = _UNSET,
+        description: Any = _UNSET,
+    ) -> Json:
+        """Update a checkout link. Only the fields you pass are changed; passing `None` clears one.
+
+        Args:
+            token: The checkout link's token.
+            paused: `True` to stop accepting payment, `False` to resume. Omit to leave unchanged.
+            redirect_url: New terminal-state redirect URL, or `None` to clear it. Omit to leave
+                unchanged.
+            expires_at: New expiry as epoch MILLISECONDS, or `None` to clear it. Omit to leave
+                unchanged.
+            description: New description, or `None` to clear it. Omit to leave unchanged.
+
+        Returns:
+            A dict with the updated checkout state.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
-        return self._c.request("GET", "/v1/invoices/stats")
+        body = _patch(paused=paused, redirectUrl=redirect_url, expiresAt=expires_at, description=description)
+        return self._c.request("PATCH", f"/v1/checkouts/{path_seg(token)}", body)
 
-    def pause(self, token: str, *, paused: bool) -> Json:
-        """Pause or resume an open invoice/link, toggling whether it accepts payment.
+    def delete(self, token: str) -> Json:
+        """Void a checkout link so it can no longer be paid (terminal — cannot be undone).
 
         Args:
-            token: The invoice/link token.
-            paused: `True` to stop accepting payment; `False` to resume.
+            token: The checkout link's token.
+
+        Returns:
+            A dict with the voided checkout state.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request("DELETE", f"/v1/checkouts/{path_seg(token)}")
+
+
+class Invoices(_Resource):
+    """Invoices — the up-front address flow (scope: `invoices:write`; reads use `invoices:read`).
+
+    Unlike `client.checkouts`, an invoice fixes the `chain` at creation and mints the deposit
+    address immediately, so you can show the payer a concrete address/QR without the hosted
+    asset-picker page.
+    """
+
+    def create(
+        self,
+        *,
+        reference: str,
+        amount: Money,
+        chain: str,
+        description: Optional[str] = None,
+        customer_email: Optional[str] = None,
+        expires_at: Optional[int] = None,
+        redirect_url: Optional[str] = None,
+    ) -> Json:
+        """Create an invoice with the deposit address minted up front (`chain` is required).
+
+        Args:
+            reference: Your unique reference for this invoice (idempotency/lookup handle).
+            amount: The invoice amount as a `Money` dict
+                `{"amount": "10.00", "currency": "USDT"}` — decimal STRING, never a float.
+            chain: The chain/network to mint the deposit address on, e.g. `"TRX"` — REQUIRED.
+            description: Optional human-readable description shown to the payer.
+            customer_email: Optional payer email (used for receipts/notifications).
+            expires_at: Optional expiry as epoch MILLISECONDS.
+            redirect_url: Optional http(s) terminal-state redirect URL (see `checkouts.create`).
+
+        Returns:
+            A dict describing the created invoice — `token`, `address`, `chain`, `amount`, and
+            the hosted URL.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+
+        Example:
+            ```python
+            inv = client.invoices.create(
+                reference="inv-1001",
+                amount={"amount": "49.99", "currency": "USDT"},
+                chain="TRX",
+                customer_email="buyer@example.com",
+            )
+            print(inv["address"])
+            ```
+        """
+        body = clean(
+            {
+                "reference": reference,
+                "amount": amount,
+                "chain": chain,
+                "description": description,
+                "customerEmail": customer_email,
+                "expiresAt": expires_at,
+                "redirectUrl": redirect_url,
+            }
+        )
+        return self._c.request("POST", "/v1/invoices", body)
+
+    def list(
+        self,
+        *,
+        status: Optional[str] = None,
+        q: Optional[str] = None,
+        limit: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
+    ) -> Json:
+        """List invoices (keyset-paginated). Same shape as `checkouts.list`.
+
+        Args:
+            status: Filter by status. Optional.
+            q: Free-text search over reference/description. Optional.
+            limit: Max items per page. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
+
+        Returns:
+            ``{"items": [...], "nextCursor": ...}``.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request(
+            "GET", "/v1/invoices" + qs({"status": status, "q": q, "limit": limit, "before": before, "order": order})
+        )
+
+    def get(self, token: str) -> Json:
+        """Fetch an invoice (and its current settlement state) by token.
+
+        Args:
+            token: The invoice token.
+
+        Returns:
+            A dict with the invoice's details and status.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response (e.g. 404 if unknown).
+        """
+        return self._c.request("GET", f"/v1/invoices/{path_seg(token)}")
+
+    def update(
+        self,
+        token: str,
+        *,
+        paused: Any = _UNSET,
+        redirect_url: Any = _UNSET,
+        expires_at: Any = _UNSET,
+        description: Any = _UNSET,
+    ) -> Json:
+        """Update an invoice. Only the fields you pass are changed; passing `None` clears one.
+
+        Args:
+            token: The invoice token.
+            paused: `True` to stop accepting payment, `False` to resume. Omit to leave unchanged.
+            redirect_url: New terminal-state redirect URL, or `None` to clear. Omit to leave
+                unchanged.
+            expires_at: New expiry as epoch MILLISECONDS, or `None` to clear. Omit to leave
+                unchanged.
+            description: New description, or `None` to clear. Omit to leave unchanged.
 
         Returns:
             A dict with the updated invoice state.
@@ -517,13 +617,14 @@ class Invoices(_Resource):
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
-        return self._c.request("POST", f"/v1/invoices/{path_seg(token)}/pause", {"paused": paused})
+        body = _patch(paused=paused, redirectUrl=redirect_url, expiresAt=expires_at, description=description)
+        return self._c.request("PATCH", f"/v1/invoices/{path_seg(token)}", body)
 
-    def void(self, token: str) -> Json:
-        """Void an invoice/link so it can no longer be paid (terminal — cannot be undone).
+    def delete(self, token: str) -> Json:
+        """Void an invoice so it can no longer be paid (terminal — cannot be undone).
 
         Args:
-            token: The invoice/link token.
+            token: The invoice token.
 
         Returns:
             A dict with the voided invoice state.
@@ -531,24 +632,126 @@ class Invoices(_Resource):
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
-        return self._c.request("POST", f"/v1/invoices/{path_seg(token)}/void")
+        return self._c.request("DELETE", f"/v1/invoices/{path_seg(token)}")
 
 
-class Subscriptions(_Resource):
-    """Recurring billing — plans and subscriptions (scope: `subscriptions:write`; reads use `subscriptions:read`)."""
+class Deposits(_Resource):
+    """Own-balance receive addresses and settled deposit history (scope: `balances:read`)."""
 
-    def list_plans(self) -> Json:
+    def chains(self) -> Json:
+        """List the chains/networks a deposit address can be created on.
+
+        Returns:
+            ``{"items": [...]}`` — supported chains (with per-chain currency/network details).
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request("GET", "/v1/deposits/chains")
+
+    def create_address(self, *, chain: str) -> Json:
+        """Create (or fetch) the permanent deposit address for a network — idempotent mint-or-return.
+
+        The address is permanent and reusable — any funds sent to it credit the workspace
+        balance. Calling again for the same chain returns the existing address.
+
+        Args:
+            chain: The chain/network to deposit on, e.g. `"TRX"` (from `chains`).
+
+        Returns:
+            A dict with the deposit `address` (and chain/memo where applicable).
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request("POST", "/v1/deposits/address", {"chain": chain})
+
+    def addresses(
+        self,
+        *,
+        chain: Optional[str] = None,
+        limit: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
+    ) -> Json:
+        """List the workspace's minted deposit addresses (keyset-paginated).
+
+        Args:
+            chain: Filter to a single chain. Optional.
+            limit: Max items per page. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
+
+        Returns:
+            ``{"items": [...], "nextCursor": ...}``.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request(
+            "GET", "/v1/deposits/addresses" + qs({"chain": chain, "limit": limit, "before": before, "order": order})
+        )
+
+    def get_address(self, chain: str) -> Json:
+        """Fetch the workspace's deposit address for a specific chain.
+
+        Args:
+            chain: The chain/network, e.g. `"TRX"`.
+
+        Returns:
+            A dict with the deposit `address` for that chain.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response (e.g. 404 if none minted yet).
+        """
+        return self._c.request("GET", f"/v1/deposits/addresses/{path_seg(chain)}")
+
+    def list(
+        self,
+        *,
+        chain: Optional[str] = None,
+        from_: Optional[int] = None,
+        to: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
+    ) -> Json:
+        """List settled deposit HISTORY — funds received into the workspace balance (keyset-paginated).
+
+        Note: `from_` maps to the `from` query parameter (`from` is a Python keyword).
+
+        Args:
+            chain: Filter to a single chain. Optional.
+            from_: Start of the time window, epoch MILLISECONDS (inclusive). Optional.
+            to: End of the time window, epoch MILLISECONDS. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
+
+        Returns:
+            ``{"items": [...], "nextCursor": ...}``.
+
+        Raises:
+            AbsolutePayError: on a non-2xx response.
+        """
+        return self._c.request(
+            "GET", "/v1/deposits" + qs({"chain": chain, "from": from_, "to": to, "before": before, "order": order})
+        )
+
+
+class Plans(_Resource):
+    """Subscription plans that subscriptions attach to (scope: `subscriptions:write`)."""
+
+    def list(self) -> Json:
         """List all subscription plans defined for the workspace.
 
         Returns:
-            A list of plan objects.
+            ``{"items": [...]}`` — plan objects.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
         return self._c.request("GET", "/v1/subscription-plans")
 
-    def create_plan(
+    def create(
         self,
         *,
         merchant_plan_no: str,
@@ -557,8 +760,9 @@ class Subscriptions(_Resource):
         interval: str,
         interval_count: int,
         total_cycles: int,
+        idempotency_key: Optional[str] = None,
     ) -> Json:
-        """Create a subscription plan that subscriptions can later be attached to.
+        """Create a subscription plan (money POST).
 
         Args:
             merchant_plan_no: Your unique reference for the plan.
@@ -568,6 +772,7 @@ class Subscriptions(_Resource):
             interval: Billing interval unit (e.g. `"DAY"`, `"WEEK"`, `"MONTH"`).
             interval_count: Number of interval units between charges (e.g. `1` = every month).
             total_cycles: Total number of charges before the plan completes.
+            idempotency_key: Optional retry-safety key; sent as the `Idempotency-Key` header.
 
         Returns:
             A dict describing the created plan (including its plan number).
@@ -583,33 +788,58 @@ class Subscriptions(_Resource):
             "intervalCount": interval_count,
             "totalCycles": total_cycles,
         }
-        return self._c.request("POST", "/v1/subscription-plans", body)
+        return self._c.request("POST", "/v1/subscription-plans", body, _idem(idempotency_key))
 
-    def list(self, *, limit: Optional[int] = None, before: Optional[str] = None, status: Optional[str] = None) -> Json:
+
+class Subscriptions(_Resource):
+    """Recurring subscriptions (scope: `subscriptions:write`; reads use `subscriptions:read`).
+
+    Plans live on the sibling `client.plans` resource.
+    """
+
+    def list(
+        self,
+        *,
+        status: Optional[str] = None,
+        q: Optional[str] = None,
+        limit: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
+    ) -> Json:
         """List subscriptions (keyset-paginated).
 
         Args:
-            limit: Max items per page. Optional.
-            before: Keyset cursor — pass the previous page's opaque `nextCursor` for the next
-                page. Optional; omit for the first page. `nextCursor` is `None`/null on the
-                last page.
             status: Filter by subscription status. Optional.
+            q: Free-text search. Optional.
+            limit: Max items per page. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
 
         Returns:
-            A dict with the page of subscriptions and a `nextCursor`.
+            ``{"items": [...], "nextCursor": ...}``.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
-        return self._c.request("GET", "/v1/subscriptions" + qs({"limit": limit, "before": before, "status": status}))
+        return self._c.request(
+            "GET", "/v1/subscriptions" + qs({"status": status, "q": q, "limit": limit, "before": before, "order": order})
+        )
 
-    def create(self, *, merchant_sub_no: str, plan_no: str, callback_url: Optional[str] = None) -> Json:
-        """Subscribe a customer to a plan.
+    def create(
+        self,
+        *,
+        merchant_sub_no: str,
+        plan_no: str,
+        callback_url: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> Json:
+        """Subscribe a customer to a plan (money POST).
 
         Args:
             merchant_sub_no: Your unique reference for this subscription.
-            plan_no: The plan number to subscribe to (from `create_plan`/`list_plans`).
+            plan_no: The plan number to subscribe to (from `client.plans`).
             callback_url: Optional per-subscription callback URL for lifecycle notifications.
+            idempotency_key: Optional retry-safety key; sent as the `Idempotency-Key` header.
 
         Returns:
             A dict describing the created subscription (status, next charge, authorization link
@@ -619,7 +849,7 @@ class Subscriptions(_Resource):
             AbsolutePayError: on a non-2xx response.
         """
         body = clean({"merchantSubNo": merchant_sub_no, "planNo": plan_no, "callbackUrl": callback_url})
-        return self._c.request("POST", "/v1/subscriptions", body)
+        return self._c.request("POST", "/v1/subscriptions", body, _idem(idempotency_key))
 
     def deductions(self, merchant_sub_no: str) -> Json:
         """Get the per-cycle deduction (charge) history for a subscription.
@@ -628,7 +858,7 @@ class Subscriptions(_Resource):
             merchant_sub_no: The subscription's merchant reference.
 
         Returns:
-            A list of past deductions/charges for the subscription.
+            ``{"items": [...]}`` — past deductions/charges for the subscription.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
@@ -657,30 +887,40 @@ class GiftCards(_Resource):
         """List the available gift-card designs/templates that can be issued.
 
         Returns:
-            A list of template objects, each with a `templateId` to pass to `create`.
+            ``{"items": [...]}`` — templates, each with a `templateId` to pass to `create`.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
         return self._c.request("GET", "/v1/giftcards/templates")
 
-    def list(self, *, limit: Optional[int] = None, before: Optional[str] = None, status: Optional[str] = None) -> Json:
+    def list(
+        self,
+        *,
+        status: Optional[str] = None,
+        q: Optional[str] = None,
+        limit: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
+    ) -> Json:
         """List issued gift cards (keyset-paginated).
 
         Args:
-            limit: Max items per page. Optional.
-            before: Keyset cursor — pass the previous page's opaque `nextCursor` for the next
-                page. Optional; omit for the first page. `nextCursor` is `None`/null on the
-                last page.
             status: Filter by gift-card status. Optional.
+            q: Free-text search. Optional.
+            limit: Max items per page. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
 
         Returns:
-            A dict with the page of gift cards and a `nextCursor`.
+            ``{"items": [...], "nextCursor": ...}``.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
-        return self._c.request("GET", "/v1/giftcards" + qs({"limit": limit, "before": before, "status": status}))
+        return self._c.request(
+            "GET", "/v1/giftcards" + qs({"status": status, "q": q, "limit": limit, "before": before, "order": order})
+        )
 
     def get(self, card_num: str) -> Json:
         """Look up a single gift card by its card number.
@@ -696,14 +936,15 @@ class GiftCards(_Resource):
         """
         return self._c.request("GET", f"/v1/giftcards/{path_seg(card_num)}")
 
-    def create(self, *, title: str, template_id: str, amount: Money) -> Json:
-        """Issue a new gift card (scope: `payments:write`).
+    def create(self, *, title: str, template_id: str, amount: Money, idempotency_key: Optional[str] = None) -> Json:
+        """Issue a new gift card (money POST; scope: `payments:write`).
 
         Args:
             title: Human-readable title/label for the card.
             template_id: The design template id (from `templates`).
             amount: The card's face value as a `Money` dict
                 `{"amount": "10.00", "currency": "USDT"}` — decimal STRING, never a float.
+            idempotency_key: Optional retry-safety key; sent as the `Idempotency-Key` header.
 
         Returns:
             A dict describing the issued gift card (card number, redemption info, status).
@@ -711,7 +952,8 @@ class GiftCards(_Resource):
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
-        return self._c.request("POST", "/v1/giftcards", {"title": title, "templateId": template_id, "amount": amount})
+        body = {"title": title, "templateId": template_id, "amount": amount}
+        return self._c.request("POST", "/v1/giftcards", body, _idem(idempotency_key))
 
 
 class OffRamp(_Resource):
@@ -721,7 +963,7 @@ class OffRamp(_Resource):
         """List the countries the off-ramp supports.
 
         Returns:
-            A list of supported countries (with the fiat currencies each allows).
+            ``{"items": [...]}`` — supported countries (with the fiat currencies each allows).
 
         Raises:
             AbsolutePayError: on a non-2xx response.
@@ -732,7 +974,7 @@ class OffRamp(_Resource):
         """List the workspace's registered destination bank accounts.
 
         Returns:
-            A list of bank accounts, each with a `bankAccountId` to pass to `withdraw`.
+            ``{"items": [...]}`` — bank accounts, each with a `bankAccountId` for `withdraw`.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
@@ -766,8 +1008,9 @@ class OffRamp(_Resource):
         fiat_currency: str,
         crypto_amount: str,
         fiat_amount: str,
+        idempotency_key: Optional[str] = None,
     ) -> Json:
-        """Execute an off-ramp against a quote, paying fiat to a bank account (this moves funds).
+        """Execute an off-ramp against a quote, paying fiat to a bank account (money POST — moves funds).
 
         Args:
             quote_token: The `quoteToken` from `quote`.
@@ -776,12 +1019,13 @@ class OffRamp(_Resource):
             fiat_currency: The fiat currency to receive (must match the quote).
             crypto_amount: Amount of crypto to sell, as a decimal STRING (from the quote).
             fiat_amount: Amount of fiat to receive, as a decimal STRING (from the quote).
+            idempotency_key: Optional retry-safety key; sent as the `Idempotency-Key` header.
 
         Returns:
             A dict describing the created off-ramp order and its status.
 
         Raises:
-            AbsolutePayError: on a non-2xx response (e.g. expired quote, insufficient balance).
+            AbsolutePayError: on a non-2xx response (e.g. expired quote, insufficient balance, 409).
         """
         body = {
             "quoteToken": quote_token,
@@ -791,25 +1035,36 @@ class OffRamp(_Resource):
             "cryptoAmount": crypto_amount,
             "fiatAmount": fiat_amount,
         }
-        return self._c.request("POST", "/v1/offramp/withdraw", body)
+        return self._c.request("POST", "/v1/offramp/withdraw", body, _idem(idempotency_key))
 
-    def orders(self, *, limit: Optional[int] = None, before: Optional[str] = None, status: Optional[str] = None) -> Json:
+    def orders(
+        self,
+        *,
+        status: Optional[str] = None,
+        q: Optional[str] = None,
+        limit: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
+    ) -> Json:
         """List off-ramp orders (keyset-paginated).
 
         Args:
-            limit: Max items per page. Optional.
-            before: Keyset cursor — pass the previous page's opaque `nextCursor` for the next
-                page. Optional; omit for the first page. `nextCursor` is `None`/null on the
-                last page.
             status: Filter by order status. Optional.
+            q: Free-text search. Optional.
+            limit: Max items per page. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
 
         Returns:
-            A dict with the page of orders and a `nextCursor`.
+            ``{"items": [...], "nextCursor": ...}``.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
-        return self._c.request("GET", "/v1/offramp/orders" + qs({"limit": limit, "before": before, "status": status}))
+        return self._c.request(
+            "GET",
+            "/v1/offramp/orders" + qs({"status": status, "q": q, "limit": limit, "before": before, "order": order}),
+        )
 
     def register_bank(
         self,
@@ -861,7 +1116,7 @@ class OffRamp(_Resource):
         )
         return self._c.request("POST", "/v1/offramp/banks", body)
 
-    def delete_bank(self, bank_account_id: str) -> Json:
+    def remove_bank(self, bank_account_id: str) -> Json:
         """Remove a registered destination bank account.
 
         Args:
@@ -875,7 +1130,9 @@ class OffRamp(_Resource):
         """
         return self._c.request("DELETE", f"/v1/offramp/banks/{path_seg(bank_account_id)}")
 
-    def submit_bank_materials(self, bank_account_id: str, *, certificate: Sequence[dict], passport: Sequence[dict]) -> Json:
+    def submit_bank_materials(
+        self, bank_account_id: str, *, certificate: Sequence[dict], passport: Sequence[dict]
+    ) -> Json:
         """Upload the verification materials required to approve a registered bank account.
 
         Args:
@@ -904,28 +1161,29 @@ class Reconciliation(_Resource):
         from_: Optional[int] = None,
         to: Optional[int] = None,
         limit: Optional[int] = None,
-        offset: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
     ) -> Json:
-        """List the settled pay-in ledger for reconciliation.
+        """List the settled pay-in ledger for reconciliation (keyset-paginated).
 
-        Note: `from_` has a trailing underscore because `from` is a Python keyword; it maps to
-        the `from` query parameter.
+        Note: `from_` maps to the `from` query parameter (`from` is a Python keyword).
 
         Args:
             from_: Start of the time window, epoch MILLISECONDS (inclusive). Optional.
             to: End of the time window, epoch MILLISECONDS. Optional.
-            limit: Max entries to return. Optional.
-            offset: Number of entries to skip (for paging). Optional.
+            limit: Max entries per page. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
 
         Returns:
-            A dict/list of settled pay-in ledger entries for the window.
+            ``{"items": [...], "total": N, "nextCursor": ...}``.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
         return self._c.request(
             "GET",
-            "/v1/reconciliation/payments" + qs({"from": from_, "to": to, "limit": limit, "offset": offset}),
+            "/v1/reconciliation/payments" + qs({"from": from_, "to": to, "limit": limit, "before": before, "order": order}),
         )
 
     def withdrawals(
@@ -934,98 +1192,28 @@ class Reconciliation(_Resource):
         from_: Optional[int] = None,
         to: Optional[int] = None,
         limit: Optional[int] = None,
-        offset: Optional[int] = None,
+        before: Optional[str] = None,
+        order: Optional[str] = None,
     ) -> Json:
-        """List the settled withdrawal ledger for reconciliation.
+        """List the settled withdrawal ledger for reconciliation (keyset-paginated).
 
-        Note: `from_` has a trailing underscore because `from` is a Python keyword; it maps to
-        the `from` query parameter.
+        Note: `from_` maps to the `from` query parameter (`from` is a Python keyword).
 
         Args:
             from_: Start of the time window, epoch MILLISECONDS (inclusive). Optional.
             to: End of the time window, epoch MILLISECONDS. Optional.
-            limit: Max entries to return. Optional.
-            offset: Number of entries to skip (for paging). Optional.
+            limit: Max entries per page. Optional.
+            before: Keyset cursor — pass the previous page's `nextCursor`. Optional.
+            order: Sort order, `"asc"` or `"desc"`. Optional.
 
         Returns:
-            A dict/list of settled withdrawal ledger entries for the window.
+            ``{"items": [...], "total": N, "nextCursor": ...}``.
 
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
         return self._c.request(
             "GET",
-            "/v1/reconciliation/withdrawals" + qs({"from": from_, "to": to, "limit": limit, "offset": offset}),
-        )
-
-
-class Deposits(_Resource):
-    """Direct on-chain deposits into the workspace balance (scope: `balances:read`)."""
-
-    def chains(self) -> Json:
-        """List the chains/networks a deposit address can be created on.
-
-        Returns:
-            A list of supported chains (with per-chain currency/network details).
-
-        Raises:
-            AbsolutePayError: on a non-2xx response.
-        """
-        return self._c.request("GET", "/v1/deposits/chains")
-
-    def create_address(self, *, chain: str) -> Json:
-        """Create (or fetch) the permanent deposit address for a network.
-
-        The address is permanent and reusable — any funds sent to it credit the workspace
-        balance.
-
-        Args:
-            chain: The chain/network to deposit on, e.g. `"TRX"` (from `chains`).
-
-        Returns:
-            A dict with the deposit `address` (and chain/memo where applicable).
-
-        Raises:
-            AbsolutePayError: on a non-2xx response.
-        """
-        return self._c.request("POST", "/v1/deposits/address", {"chain": chain})
-
-
-class Transactions(_Resource):
-    """Unified funds ledger for reconciliation (scope: `ledger:read`)."""
-
-    def list(
-        self,
-        *,
-        currency: Optional[str] = None,
-        from_: Optional[int] = None,
-        to: Optional[int] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-        format: Optional[str] = None,
-    ) -> Json:
-        """List ledger entries across all funds movements, for reconciliation.
-
-        Note: `from_` has a trailing underscore because `from` is a Python keyword; it maps to
-        the `from` query parameter. Unlike the cursor-paginated resources, this endpoint uses
-        classic `limit`/`offset` paging.
-
-        Args:
-            currency: Filter to a single currency, e.g. `"USDT"`. Optional.
-            from_: Start of the time window, epoch MILLISECONDS (inclusive). Optional.
-            to: End of the time window, epoch MILLISECONDS. Optional.
-            limit: Max entries to return. Optional.
-            offset: Number of entries to skip (for paging). Optional.
-            format: Response format hint (e.g. a CSV export mode). Optional.
-
-        Returns:
-            A dict/list of ledger entries for the window.
-
-        Raises:
-            AbsolutePayError: on a non-2xx response.
-        """
-        return self._c.request(
-            "GET",
-            "/v1/transactions"
-            + qs({"currency": currency, "from": from_, "to": to, "limit": limit, "offset": offset, "format": format}),
+            "/v1/reconciliation/withdrawals"
+            + qs({"from": from_, "to": to, "limit": limit, "before": before, "order": order}),
         )
