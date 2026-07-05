@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from .errors import AbsolutePayError
 from .resources import (
     Balances,
+    Checkouts,
     Conversions,
     Deposits,
     Fees,
@@ -24,7 +25,6 @@ from .resources import (
     Reconciliation,
     Refunds,
     Subscriptions,
-    Transactions,
 )
 from .signing import sign_request
 
@@ -33,13 +33,32 @@ PRODUCTION_BASE = "https://api.absolutepay.io"
 SANDBOX_BASE = "https://sandbox-api.absolutepay.io"
 
 
+def _sdk_version() -> str:
+    """Resolve the installed package version (falls back when running from an uninstalled tree)."""
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        try:
+            return version("absolutepay")
+        except PackageNotFoundError:
+            return "0.0.0"
+    except ImportError:  # pragma: no cover - importlib.metadata is stdlib on 3.9+
+        return "0.0.0"
+
+
+#: Default ``User-Agent`` sent on every request. Some edge/WAF layers (e.g. Cloudflare) block
+#: urllib's default UA, so we identify the SDK explicitly. Overridable per request via
+#: ``extra_headers``.
+USER_AGENT = f"absolutepay-python/{_sdk_version()}"
+
+
 class AbsolutePay:
     """AbsolutePay API client — compose once, then reach the REST surface via resource groups.
 
     Each API area hangs off the instance as an attribute: `balances`, `fees`,
-    `payouts`, `refunds`, `conversions`, `invoices`, `subscriptions`, `giftcards`, `offramp`,
-    `transactions`, `reconciliation`, and `deposits`. Every call returns parsed JSON and raises
-    `AbsolutePayError` on a non-2xx response.
+    `payouts`, `refunds`, `conversions`, `checkouts`, `invoices`, `subscriptions` (with a nested
+    `subscriptions.plans`), `giftcards`, `offramp`, `reconciliation`, and `deposits`. Every call
+    returns parsed JSON and raises `AbsolutePayError` on a non-2xx response.
 
     This is a **server-side** client: the API key and signing secret authenticate as your
     workspace and must never reach a browser or mobile app. When `signing_secret` is set,
@@ -72,7 +91,7 @@ class AbsolutePay:
             signing_secret="apisign_...",
         )
         balances = client.balances.list()
-        checkout = client.invoices.create_checkout(
+        checkout = client.checkouts.create(
             reference="order-2026-0001",
             amount={"amount": "10.00", "currency": "USDT"},
         )
@@ -108,11 +127,11 @@ class AbsolutePay:
         self.payouts = Payouts(self)
         self.refunds = Refunds(self)
         self.conversions = Conversions(self)
+        self.checkouts = Checkouts(self)
         self.invoices = Invoices(self)
         self.subscriptions = Subscriptions(self)
         self.giftcards = GiftCards(self)
         self.offramp = OffRamp(self)
-        self.transactions = Transactions(self)
         self.reconciliation = Reconciliation(self)
         self.deposits = Deposits(self)
 
@@ -126,7 +145,7 @@ class AbsolutePay:
         """Send one signed HTTP request and return the parsed JSON body.
 
         This is the low-level transport shared by every resource method. Most callers use the
-        resource helpers (`client.balances.list()`, `client.invoices.create_checkout(...)`,
+        resource helpers (`client.balances.list()`, `client.checkouts.create(...)`,
         etc.) instead of calling this directly. The `authorization: Bearer` header and, when a
         `signing_secret` is configured, the HMAC signature headers are attached here. Extra
         headers (e.g. `Idempotency-Key`) are merged *after* signing so they stay outside the
@@ -150,12 +169,13 @@ class AbsolutePay:
                 `code == "network_error"`).
         """
         body_str = json.dumps(body, separators=(",", ":")) if body is not None else ""
-        headers: dict[str, str] = {"authorization": f"Bearer {self._api_key}"}
+        headers: dict[str, str] = {"authorization": f"Bearer {self._api_key}", "user-agent": USER_AGENT}
         if body is not None:
             headers["content-type"] = "application/json"
         if self._signing_secret:
             headers.update(sign_request(self._signing_secret, method, path, body_str))
-        # Extra headers (e.g. Idempotency-Key) are NOT part of the signed canonical string, so merge after signing.
+        # Extra headers (e.g. Idempotency-Key, a caller-supplied User-Agent) are NOT part of the
+        # signed canonical string, so merge after signing; a caller's user-agent overrides the default.
         if extra_headers:
             headers.update(extra_headers)
 

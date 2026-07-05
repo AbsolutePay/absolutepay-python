@@ -35,16 +35,24 @@ ap = AbsolutePay(
     # base_url="https://…",     # optional: override the origin entirely (wins over sandbox)
 )
 
-balances = ap.balances.list()
+balances = ap.balances.list()          # {"items": [...]}
 preview = ap.fees.preview(amount="100", currency="USDT")
 
-invoice = ap.invoices.create(
+# Hosted checkout link — the payer picks which asset/chain to pay with on the page
+checkout = ap.checkouts.create(
     reference="order-123",
     amount={"amount": "25.00", "currency": "USDT"},
-    chain="MATIC",  # mint the deposit address up front; omit to let the payer pick
     redirect_url="https://shop.example.com/thank-you",  # payer returns here when done
 )
-print(invoice["token"])
+print(checkout["checkoutUrl"])  # send the payer here; confirm via the payment.succeeded webhook
+
+# Up-front address flow — `chain` is required; the deposit address is minted immediately
+invoice = ap.invoices.create(
+    reference="order-124",
+    amount={"amount": "25.00", "currency": "USDT"},
+    chain="TRX",
+)
+print(invoice["address"])
 ```
 
 ## Money
@@ -57,16 +65,27 @@ Amounts are plain dicts — a decimal string plus a currency code:
 
 ## Resources
 
-`balances` · `fees` · `payouts` · `refunds` · `conversions` · `invoices` (+ `invoices.public`) · `subscriptions` · `giftcards` · `offramp` · `transactions`
+`balances` · `fees` · `payouts` · `refunds` · `conversions` · `checkouts` · `invoices` · `deposits` · `subscriptions` (+ `subscriptions.plans`) · `giftcards` · `offramp` · `reconciliation`
+
+Both `checkouts` and `invoices` expose the same CRUD: `create` · `list` · `get` · `update` · `delete`.
+
+### Lists & pagination
+
+Every `list`-style method takes keyword filters plus `limit` / `before` / `order` (`"asc"`/`"desc"`) and returns the raw page `{"items": [...], "nextCursor": ...}`. Page by feeding `nextCursor` back as `before`; a `None` cursor is the last page. Refund, conversion and reconciliation histories additionally carry a `total`.
 
 ```python
-# Hosted checkout link — the payer picks which asset/chain to pay with
-checkout = ap.invoices.create_checkout(
-    reference="order-123",
-    amount={"amount": "25.00", "currency": "USDT"},
-)
-print(checkout["checkoutUrl"])  # send the payer here; confirm via the payment.succeeded webhook
+page = ap.checkouts.list(status="open", limit=50, order="desc")
+for chk in page["items"]:
+    ...
+cursor = page["nextCursor"]  # pass as before= for the next page; None on the last
+
+# Settled refund history (keyset-paginated, carries a total)
+refunds = ap.refunds.list(from_=1_700_000_000_000, to=1_800_000_000_000, currency="USDT")
 ```
+
+### Idempotency
+
+Money POSTs — `payouts.create`, `refunds.create`, `conversions.execute`, `offramp.withdraw`, `giftcards.create`, `subscriptions.create`, `subscriptions.plans.create` — accept `idempotency_key=`, sent as the `Idempotency-Key` header (a retry with the same key never acts twice; a `409` surfaces as a normal `AbsolutePayError`).
 
 ```python
 # Batch payout (idempotent — a retry with the same key never pays twice)
@@ -75,11 +94,22 @@ ap.payouts.create(
     idempotency_key="payroll-2026-07-01",
 )
 
-# Quote + execute a conversion in one call
-order = ap.conversions.convert(sell_currency="USDT", buy_currency="ETH", sell_amount="100")
+# Convert USDT → ETH (quote then execute)
+q = ap.conversions.quote(sell_currency="USDT", buy_currency="ETH", sell_amount="100")
+ap.conversions.execute(
+    quote_id=q["quoteId"],
+    sell={"amount": q["sellAmount"], "currency": q["sellCurrency"]},
+    buy={"amount": q["buyAmount"], "currency": q["buyCurrency"]},
+    idempotency_key="convert-001",
+)
+```
 
-# Ledger, filtered by time range (epoch ms) and paginated
-ledger = ap.transactions.list(from_=1_700_000_000_000, to=1_800_000_000_000, limit=50, offset=0)
+### Deposits (own-balance receive addresses)
+
+```python
+ap.deposits.chains()                     # {"items": [...]}
+addr = ap.deposits.create_address(chain="TRX")   # idempotent mint-or-return
+ap.deposits.list(chain="TRX")            # settled deposit history {"items", "nextCursor"}
 ```
 
 ## Errors
@@ -124,7 +154,7 @@ The freshness (replay) window defaults to 5 minutes; pass `tolerance_ms=0` to di
 
 - **Server-side only.** The API key + signing secret authenticate as your workspace — never ship them to a browser or mobile app.
 - Requests are sent over HTTPS only (except `localhost` for local development).
-- The `Idempotency-Key` header (on payouts) is intentionally **not** part of the signed canonical string.
+- The `Idempotency-Key` header (on money POSTs) is intentionally **not** part of the signed canonical string.
 
 ## License
 
