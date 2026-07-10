@@ -70,7 +70,7 @@ class Balances(_Resource):
 
 
 class Fees(_Resource):
-    """Preview fees from the pricing matrix (scope: `balances:read`)."""
+    """Preview the total fee before a payment (scope: `balances:read`)."""
 
     def preview(self, *, amount: str, currency: str, payment_type: Optional[str] = None) -> Json:
         """Preview the fee that would apply to an amount, without moving any funds.
@@ -82,7 +82,7 @@ class Fees(_Resource):
                 defaults to `CHECKOUT` server-side.
 
         Returns:
-            A dict describing the computed fee (network base + tier margin) and the net amount.
+            A dict with the total ``fee`` and the ``net`` amount (``amount - fee``).
 
         Raises:
             AbsolutePayError: on a non-2xx response.

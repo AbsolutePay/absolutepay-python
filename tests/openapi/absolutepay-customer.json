@@ -310,9 +310,7 @@
           "currency",
           "paymentType",
           "fee",
-          "net",
-          "markup",
-          "networkFee"
+          "net"
         ],
         "properties": {
           "amount": {
@@ -336,16 +334,6 @@
             "type": "string",
             "description": "amount - fee",
             "example": "997.500000"
-          },
-          "markup": {
-            "type": "string",
-            "description": "your account-tier fee portion",
-            "example": "2.000000"
-          },
-          "networkFee": {
-            "type": "string",
-            "description": "network/processing fee portion",
-            "example": "0.500000"
           }
         }
       },
@@ -1900,7 +1888,7 @@
       "get": {
         "operationId": "previewFee",
         "summary": "Preview a fee",
-        "description": "Compute the total fee on a hypothetical amount before you transact, so you can show costs or net proceeds up front. Required query params are `amount` and `currency`; optionally pass `paymentType` (one of `CHECKOUT`, `WITHDRAWAL`, `SUBSCRIPTION`, `CONVERSION`, `OFFRAMP`, `GIFTCARD`) to price a specific flow. The response returns the total `fee`, the `net` (amount minus fee), and the two portions that make it up — your account-tier fee and the `networkFee`. This is a read-only estimate; it neither creates nor reserves anything. Needs the `balances:read` scope; returns `400` on an invalid amount or currency.",
+        "description": "Compute the total fee on a hypothetical amount before you transact, so you can show costs or net proceeds up front. Required query params are `amount` and `currency`; optionally pass `paymentType` (one of `CHECKOUT`, `WITHDRAWAL`, `PAYOUT`, `OFFRAMP`, `GIFTCARD`) to price a specific flow. `PAYOUT` is an alias for `WITHDRAWAL`. The response returns the total `fee` and the `net` (amount minus fee). This is a read-only estimate; it neither creates nor reserves anything. Needs the `balances:read` scope; returns `400` on an invalid amount or currency.",
         "parameters": [
           {
             "name": "amount",
@@ -1927,8 +1915,7 @@
               "enum": [
                 "CHECKOUT",
                 "WITHDRAWAL",
-                "SUBSCRIPTION",
-                "CONVERSION",
+                "PAYOUT",
                 "OFFRAMP",
                 "GIFTCARD"
               ]
