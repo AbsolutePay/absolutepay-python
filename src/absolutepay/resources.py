@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Optional, Sequence
 
 from ._util import clean, path_seg, qs
+from .errors import AbsolutePayError
 
 if TYPE_CHECKING:
     from .client import AbsolutePay
@@ -72,7 +73,9 @@ class Balances(_Resource):
 class Fees(_Resource):
     """Preview the total fee before a payment (scope: `balances:read`)."""
 
-    def preview(self, *, amount: str, currency: str, payment_type: Optional[str] = None) -> Json:
+    def preview(
+        self, *, amount: str, currency: str, payment_type: Optional[str] = None, chain: Optional[str] = None
+    ) -> Json:
         """Preview the fee that would apply to an amount, without moving any funds.
 
         Args:
@@ -80,15 +83,21 @@ class Fees(_Resource):
             currency: The currency code, e.g. `"USDT"`.
             payment_type: Which flow to price (e.g. `"CHECKOUT"`, `"PAYOUT"`). Optional;
                 defaults to `CHECKOUT` server-side.
+            chain: Network for the fee (e.g. `"MATIC"`). Required when ``payment_type`` is
+                ``"WITHDRAWAL"``/``"PAYOUT"`` (payout fees are per-chain); ignored for pay-in.
 
         Returns:
             A dict with the total ``fee`` and the ``net`` amount (``amount - fee``).
 
         Raises:
-            AbsolutePayError: on a non-2xx response.
+            AbsolutePayError: ``chain_required`` (400) if ``payment_type`` is
+                ``"WITHDRAWAL"``/``"PAYOUT"`` and ``chain`` is missing; otherwise on a non-2xx response.
         """
+        if payment_type in ("WITHDRAWAL", "PAYOUT") and not chain:
+            raise AbsolutePayError(400, "chain_required", "a chain is required to preview a payout/withdrawal fee")
         return self._c.request(
-            "GET", "/v1/fees/preview" + qs({"amount": amount, "currency": currency, "paymentType": payment_type})
+            "GET",
+            "/v1/fees/preview" + qs({"amount": amount, "currency": currency, "paymentType": payment_type, "chain": chain}),
         )
 
 
