@@ -37,6 +37,8 @@ ap = AbsolutePay(
 
 balances = ap.balances.list()          # {"items": [...]}
 preview = ap.fees.preview(amount="100", currency="USDT")
+# Withdrawal/payout fees are per-chain — pass `chain`:
+payout_fee = ap.fees.preview(amount="100", currency="USDT", payment_type="WITHDRAWAL", chain="MATIC")
 
 # Hosted checkout link — the payer picks which asset/chain to pay with on the page
 checkout = ap.checkouts.create(
