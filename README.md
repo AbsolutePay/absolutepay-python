@@ -114,6 +114,19 @@ addr = ap.deposits.create_address(chain="TRX")   # idempotent mint-or-return
 ap.deposits.list(chain="TRX")            # settled deposit history {"items", "nextCursor"}
 ```
 
+### Subscriptions
+
+```python
+# Create a plan with a 14-day free trial (trial_days is 0–365; omit for none)
+plan = ap.subscriptions.plans.create(
+    merchant_plan_no="pro-monthly", name="Pro", amount={"amount": "10.00", "currency": "USDT"},
+    interval="MONTH", interval_count=1, total_cycles=12, trial_days=14,
+)
+sub = ap.subscriptions.create(merchant_sub_no="sub-001", plan_no=plan["merchantPlanNo"])
+sub["status"]  # PENDING | TRIALING | ACTIVE | PAST_DUE | COMPLETED | CANCELLED | BLOCKED
+sub["appId"]   # the API key that created it
+```
+
 ## Errors
 
 Non-2xx responses raise `AbsolutePayError`:

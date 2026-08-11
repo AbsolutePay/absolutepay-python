@@ -769,6 +769,7 @@ class Plans(_Resource):
         interval: str,
         interval_count: int,
         total_cycles: int,
+        trial_days: Optional[int] = None,
         idempotency_key: Optional[str] = None,
     ) -> Json:
         """Create a subscription plan (money POST).
@@ -781,6 +782,9 @@ class Plans(_Resource):
             interval: Billing interval unit (e.g. `"DAY"`, `"WEEK"`, `"MONTH"`).
             interval_count: Number of interval units between charges (e.g. `1` = every month).
             total_cycles: Total number of charges before the plan completes.
+            trial_days: Optional free-trial length in days (`0`–`365`). When set, subscribers
+                start in a `TRIALING` status and the first charge is deferred until the trial
+                ends. Sent as `trialDays`; omitted when `None`.
             idempotency_key: Optional retry-safety key; sent as the `Idempotency-Key` header.
 
         Returns:
@@ -789,14 +793,17 @@ class Plans(_Resource):
         Raises:
             AbsolutePayError: on a non-2xx response.
         """
-        body = {
-            "merchantPlanNo": merchant_plan_no,
-            "name": name,
-            "amount": amount,
-            "interval": interval,
-            "intervalCount": interval_count,
-            "totalCycles": total_cycles,
-        }
+        body = clean(
+            {
+                "merchantPlanNo": merchant_plan_no,
+                "name": name,
+                "amount": amount,
+                "interval": interval,
+                "intervalCount": interval_count,
+                "totalCycles": total_cycles,
+                "trialDays": trial_days,
+            }
+        )
         return self._c.request("POST", "/v1/subscription-plans", body, _idem(idempotency_key))
 
 
@@ -804,6 +811,10 @@ class Subscriptions(_Resource):
     """Recurring subscriptions (scope: `subscriptions:write`; reads use `subscriptions:read`).
 
     Plans live on the nested `client.subscriptions.plans` resource (a `Plans`).
+
+    A subscription's ``status`` is one of ``PENDING``, ``TRIALING`` (inside a plan's free
+    trial), ``ACTIVE``, ``PAST_DUE``, ``COMPLETED``, ``CANCELLED``, or ``BLOCKED``. The
+    subscription object also carries ``appId`` — the API key that created it — when available.
     """
 
     def __init__(self, client: "AbsolutePay") -> None:
@@ -860,8 +871,8 @@ class Subscriptions(_Resource):
             idempotency_key: Optional retry-safety key; sent as the `Idempotency-Key` header.
 
         Returns:
-            A dict describing the created subscription (status, next charge, authorization link
-            if applicable).
+            A dict describing the created subscription (`status` — including `TRIALING` when the
+            plan has a trial — `appId`, next charge, and an authorization link if applicable).
 
         Raises:
             AbsolutePayError: on a non-2xx response.
