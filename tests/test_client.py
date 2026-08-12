@@ -188,6 +188,35 @@ def test_idempotency_key_wired_on_all_money_posts(monkeypatch):
         assert cap["headers"]["x-absolutepay-signature"]  # header stays outside the signature
 
 
+def test_plan_create_maps_trial_days_only_when_set(monkeypatch):
+    amount = {"amount": "10.00", "currency": "USDT"}
+
+    # Omitted -> no trialDays in the body.
+    cap = install(monkeypatch, 201, {"merchantPlanNo": "p1"})
+    client().subscriptions.plans.create(
+        merchant_plan_no="p1", name="Pro", amount=amount, interval="MONTH",
+        interval_count=1, total_cycles=12,
+    )
+    body = json.loads(cap["body"])
+    assert "trialDays" not in body
+    assert body["intervalCount"] == 1 and body["totalCycles"] == 12
+
+    # Set -> sent as camelCase trialDays (0 is kept, not dropped).
+    cap2 = install(monkeypatch, 201, {"merchantPlanNo": "p2"})
+    client().subscriptions.plans.create(
+        merchant_plan_no="p2", name="Trial", amount=amount, interval="MONTH",
+        interval_count=1, total_cycles=12, trial_days=0,
+    )
+    assert json.loads(cap2["body"])["trialDays"] == 0
+
+    cap3 = install(monkeypatch, 201, {"merchantPlanNo": "p3"})
+    client().subscriptions.plans.create(
+        merchant_plan_no="p3", name="Trial", amount=amount, interval="MONTH",
+        interval_count=1, total_cycles=12, trial_days=14,
+    )
+    assert json.loads(cap3["body"])["trialDays"] == 14
+
+
 def test_omits_idempotency_key_when_absent(monkeypatch):
     cap = install(monkeypatch, 202, {"merchantBatchNo": "po_1", "status": "PROCESSING", "subOrders": []})
     client().payouts.create([{"recipientAddress": "0xabc", "chain": "MATIC", "amount": {"amount": "1", "currency": "USDT"}}])
